@@ -61,6 +61,11 @@ CONNECTORS: dict[str, type["BaseConnector"]] = {}
 
 class BaseConnector(ABC):
     platform: ClassVar[str] = ""
+    # SQLAlchemy model for this platform's append-only raw layer, or None to
+    # skip raw capture. Declared here so the sync engine needs no per-connector
+    # edits (SPEC §3). The model itself lives in app.models so it registers in
+    # the metadata for migrations.
+    raw_model: ClassVar[type | None] = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

@@ -28,8 +28,10 @@ Python 3.12 · FastAPI · SQLAlchemy 2 + Alembic · Postgres 16 · Redis 7 · Ce
 - Env vars prefixed `MAJRA_`; secrets never logged.
 - Three Postgres schemas: `app`, `raw`, `norm`.
 - Add a connector by subclassing `BaseConnector` under `app/connectors/<slug>/`
-  and nothing else — if you think you need to change `core/` or `api/`, stop and
-  say why first. Proving that is the whole point of Phase 4.
+  and nothing else — proven twice now (Meta and Google Ads slotted in with zero
+  edits to `app/core` or `app/api`). A connector declares its own `raw_model`
+  (class attribute) and may carry its own settings object; if you think you need
+  to change `core/` or `api/`, stop and say why first.
 - Facts are written delete+insert (idempotent); never add a unique constraint to
   make upserts work.
 - Run `python -m pytest -q` (from `backend/`, with `PYTHONPATH=.`) — keep it

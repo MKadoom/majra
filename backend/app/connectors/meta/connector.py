@@ -12,6 +12,7 @@ from app.connectors.base import (
 )
 from app.connectors.meta import mapping
 from app.core.config import settings
+from app.models import RawMetaInsights
 
 GRAPH_VERSION = "v21.0"
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
@@ -36,6 +37,7 @@ BREAKDOWN_PARAMS = {
 
 class MetaConnector(BaseConnector):
     platform = "meta"
+    raw_model = RawMetaInsights
 
     # ------------------------------------------------------------- auth
     def auth_url(self, state: str, redirect_uri: str) -> str:

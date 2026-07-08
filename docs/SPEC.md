@@ -39,7 +39,21 @@ request). Nothing else escapes a connector. `get_connector(platform)` returns an
 instance; unknown platform raises `PermanentError`.
 
 Breakdown sets a connector may support (`BREAKDOWN_SETS`): `none`, `country`,
-`device`, `age_gender`. `none` is mandatory.
+`device`, `age_gender`. `none` is mandatory. A connector may support a subset and
+raise `PermanentError` for the rest (the Google connector supports `none`,
+`country`, `device`).
+
+A connector is a self-contained drop-in under `app/connectors/<slug>/` and needs
+no edits to `app/core` or `app/api`:
+- It declares `raw_model` (a class attribute pointing at its append-only raw
+  table, or `None`); the sync engine reads `connector.raw_model` — there is no
+  central registry to edit.
+- It may carry its own settings. Meta reads the shared `Settings`
+  (`app/core/config.py`), built in Phase 1; the Google connector instead defines
+  a connector-scoped `GoogleAdsSettings` inside its own package (same `MAJRA_`
+  env prefix). Either pattern is fine.
+The raw-table model itself lives in `app.models` so it registers in the metadata
+for migrations.
 
 ## §3 Normalized schema (schema `norm`)
 Dimensions (`app/models/norm_models.py`):
@@ -145,9 +159,12 @@ Derived metrics are null when their denominator is zero.
   Later migrations are normal Alembic operations.
 
 ## §8 Status
-Built and tested (8 passing tests): auth, token encryption, the connector SDK,
-the full Meta Ads connector (OAuth + long-lived tokens + paginated insights +
-normalization), the idempotent sync engine, watermark/backfill logic, schedule
-ticking, and the metrics API. Not yet built: Google Ads and the other connectors
-(Phase 4–5), the dashboard (Phase 6), exports/API keys/saved reports (Phase 7),
-and production hardening/monitoring (Phase 8).
+Built and tested (14 passing tests): auth, token encryption, the connector SDK,
+the full **Meta Ads** and **Google Ads** connectors (OAuth — long-lived tokens
+for Meta, refresh-token flow for Google — paginated insights + normalization),
+the idempotent sync engine, watermark/backfill logic, schedule ticking, the
+metrics API, and a blended cross-platform `/metrics` query. Adding Google
+required no changes to `app/core` or `app/api`. Not yet built: the remaining
+connectors — GA4, TikTok, Snapchat, FB Pages + Instagram, GTM (Phase 5); the
+dashboard (Phase 6); exports/API keys/saved reports (Phase 7); and production
+hardening/monitoring (Phase 8).

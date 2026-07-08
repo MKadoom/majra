@@ -14,16 +14,19 @@ tested code — not scaffolding.
 | 1 | Skeleton: auth (JWT), Postgres schemas, config, health, Docker | ✅ built + tested |
 | 2 | Connector SDK + full **Meta Ads** connector (OAuth → insights → warehouse) | ✅ built + tested |
 | 3 | Celery scheduling, incremental sync, restatement, retries, idempotency | ✅ built + tested |
-| 4 | Google Ads connector (proves the plugin architecture) | ▢ next |
-| 5 | GA4 · TikTok · Snapchat · FB Pages + Instagram · GTM | ▢ |
+| 4 | Google Ads connector (proves the plugin architecture) | ✅ built + tested |
+| 5 | GA4 · TikTok · Snapchat · FB Pages + Instagram · GTM | ▢ next |
 | 6 | Next.js dashboard | ▢ |
 | 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ▢ |
 | 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ |
 
-**8 tests pass** covering auth, token encryption, the connector SDK, Meta
-normalization, a full end-to-end sync against a mocked Graph API (with
-pagination), idempotent re-sync, watermark/backfill logic, schedule ticking, and
-the metrics API. See `docs/SPEC.md` for the binding contract.
+**14 tests pass** covering auth, token encryption, the connector SDK, Meta and
+Google Ads normalization, full end-to-end syncs against mocked platform APIs
+(with pagination), idempotent re-sync, watermark/backfill logic, schedule
+ticking, the metrics API, and a **blended Meta + Google `/metrics` query** — two
+platforms answered from a single query. Adding Google required **zero changes to
+`app/core` or `app/api`**: a connector is a genuine drop-in under
+`app/connectors/`. See `docs/SPEC.md` for the binding contract.
 
 ## The three things only you can do
 

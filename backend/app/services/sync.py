@@ -14,7 +14,7 @@ from app.connectors.base import PermanentError, TokenSet, get_connector
 from app.core.security import decrypt_tokens
 from app.models import (
     Account, Ad, Adset, Campaign, Connection, FactAdPerformance,
-    RawMetaInsights, SyncJob, SyncLog,
+    SyncJob, SyncLog,
 )
 
 log = structlog.get_logger()
@@ -144,9 +144,6 @@ def _resolve_dims(db, acc, norm, camp_map, adset_map, ad_map):
     return campaign_id, adset_id, ad_id
 
 
-RAW_MODELS = {"meta": RawMetaInsights}
-
-
 # ------------------------------------------------------------------ main
 def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     job = db.get(SyncJob, sync_job_id)
@@ -161,7 +158,7 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     try:
         connector = get_connector(conn.platform)
         tokens = TokenSet.from_dict(decrypt_tokens(conn.encrypted_tokens))
-        raw_model = RAW_MODELS.get(conn.platform)
+        raw_model = connector.raw_model
 
         accounts = _upsert_accounts(db, conn, connector.fetch_accounts(tokens))
         _log(db, job, "accounts.synced", count=len(accounts))

@@ -125,3 +125,18 @@ class RawMetaInsights(Base):
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RawGoogleInsights(Base):
+    """Append-only raw layer for Google Ads (SPEC §3). Same shape as the Meta
+    raw table; kept as a separate table per the one-table-per-platform rule."""
+
+    __tablename__ = "google_insights"
+    __table_args__ = {"schema": "raw"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    connection_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    account_external_id: Mapped[str] = mapped_column(String(120))
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
