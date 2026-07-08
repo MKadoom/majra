@@ -75,7 +75,11 @@ def _sync_entities(db: Session, connector, tokens: TokenSet, acc: Account):
     """Fetch campaign/adset/ad entities and return external-id → internal-id maps."""
     camp_map: dict[str, int] = {}
     adset_map: dict[str, int] = {}
+    camp_map: dict[str, int] = {}
+    adset_map: dict[str, int] = {}
     ad_map: dict[str, int] = {}
+    adset_campaign: dict[int, int] = {}          # adset_id -> campaign_id
+    ad_parents: dict[str, tuple[int | None, int | None]] = {}  # ad_ext -> (adset_id, campaign_id)
 
     for raw in connector.fetch_entities(tokens, acc.external_id, "campaign"):
         e = connector.normalize_entity(raw, "campaign")
@@ -99,6 +103,7 @@ def _sync_entities(db: Session, connector, tokens: TokenSet, acc: Account):
             status=e.get("status"),
         )
         adset_map[e["external_id"]] = row.id
+        adset_campaign[row.id] = parent
 
     for raw in connector.fetch_entities(tokens, acc.external_id, "ad"):
         e = connector.normalize_entity(raw, "ad")
@@ -110,14 +115,17 @@ def _sync_entities(db: Session, connector, tokens: TokenSet, acc: Account):
             status=e.get("status"),
         )
         ad_map[e["external_id"]] = row.id
+        ad_parents[e["external_id"]] = (parent, adset_campaign.get(parent))
 
     db.flush()
-    return camp_map, adset_map, ad_map
+    return camp_map, adset_map, ad_map, ad_parents
 
 
-def _resolve_dims(db, acc, norm, camp_map, adset_map, ad_map):
-    """Insights can reference archived entities missing from entity fetches —
-    create minimal dims lazily from the insight row's names."""
+def _resolve_dims(db, acc, norm, camp_map, adset_map, ad_map, ad_parents):
+    """Map an insight row to internal dim ids. Insights may reference archived
+    entities (create dims lazily from names), or — for ad-level-only reporters
+    like TikTok/Snapchat — carry just the ad id, in which case the ad's
+    campaign/adset are derived from the entity hierarchy (ad_parents)."""
     c_ext, s_ext, a_ext = (
         norm.get("campaign_external_id"),
         norm.get("adset_external_id"),
@@ -141,6 +149,11 @@ def _resolve_dims(db, acc, norm, camp_map, adset_map, ad_map):
             db, Ad, "adset_id", adset_id, a_ext, norm.get("ad_name")
         ).id
         ad_map[a_ext] = ad_id
+    # derive missing parents from the ad's known hierarchy
+    if a_ext and (campaign_id is None or adset_id is None):
+        p_adset, p_campaign = ad_parents.get(a_ext, (None, None))
+        adset_id = adset_id or p_adset
+        campaign_id = campaign_id or p_campaign
     return campaign_id, adset_id, ad_id
 
 
@@ -168,7 +181,9 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
     total_rows = 0
     facts: list[dict] = []
     for acc in accounts:
-        camp_map, adset_map, ad_map = _sync_entities(db, connector, tokens, acc)
+        camp_map, adset_map, ad_map, ad_parents = _sync_entities(
+            db, connector, tokens, acc
+        )
         fetched = 0
         for raw in connector.fetch_insights(
             tokens, acc.external_id, job.date_from, job.date_to, job.breakdown
@@ -176,7 +191,7 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
             _append_raw(db, raw_model, conn, job, acc.external_id, raw)
             norm = connector.normalize_insight(raw, job.breakdown)
             campaign_id, adset_id, ad_id = _resolve_dims(
-                db, acc, norm, camp_map, adset_map, ad_map
+                db, acc, norm, camp_map, adset_map, ad_map, ad_parents
             )
             facts.append(
                 dict(

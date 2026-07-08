@@ -15,19 +15,24 @@ tested code — not scaffolding.
 | 2 | Connector SDK + full **Meta Ads** connector (OAuth → insights → warehouse) | ✅ built + tested |
 | 3 | Celery scheduling, incremental sync, restatement, retries, idempotency | ✅ built + tested |
 | 4 | Google Ads connector (proves the plugin architecture) | ✅ built + tested |
-| 5 | GA4 ✅ · TikTok · Snapchat · FB Pages + Instagram · GTM | ◐ GA4 done; rest next |
+| 5 | GA4 ✅ · TikTok ✅ · Snapchat ✅ · FB Pages + Instagram · GTM | ◐ paid platforms done; social + GTM next |
 | 6 | Next.js dashboard | ▢ |
 | 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ▢ |
 | 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ |
 
-**19 tests pass** covering auth, token encryption, the connector SDK, Meta,
-Google Ads, and **GA4** normalization, full end-to-end syncs against mocked
-platform APIs (with pagination), idempotent re-sync, watermark/backfill logic,
-schedule ticking, the metrics API, and a blended Meta + Google `/metrics` query.
-GA4 is the architecturally distinct one — **service-account auth** (not OAuth), a
-**second fact shape** (`fact_web_performance`), queried via a separate
-`/web-metrics` endpoint — and it slotted in behind the same connector SDK with
-**zero changes to `app/core`**. See `docs/SPEC.md` for the binding contract.
+**25 tests pass** covering auth, token encryption, the connector SDK, five
+connectors — Meta, Google Ads, GA4, **TikTok**, and **Snapchat** — with
+full end-to-end syncs against mocked platform APIs (pagination, token refresh,
+nested-stats flattening, micro-currency), idempotent re-sync, watermark/backfill
+logic, schedule ticking, the metrics + web-metrics APIs, and a blended
+cross-platform `/metrics` query. Every paid connector after Meta slotted in
+behind the same SDK with **zero changes to `app/core`**. See `docs/SPEC.md` for
+the binding contract.
+
+All four **paid-media** platforms (Meta, Google, TikTok, Snapchat) share one
+`ad_performance` shape and blend in a single `/metrics` query. TikTok and
+Snapchat report only at ad level, so the engine derives each fact's campaign and
+ad-set from the entity hierarchy.
 
 ## The three things only you can do
 

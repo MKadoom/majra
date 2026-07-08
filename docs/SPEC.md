@@ -127,6 +127,10 @@ never mutated.
 - Write path (`run_sync`): append raw pages, upsert dims, then **delete+insert**
   facts scoped to (this connection's accounts, this breakdown, this date range)
   in one transaction → every sync is idempotent and safe to retry.
+- Dim resolution derives an ad's campaign/ad-set from the entity hierarchy when
+  an insight row carries only the ad id. Meta and Google report full ids; TikTok
+  and Snapchat report at ad level only, so their facts still get campaign_id and
+  adset_id populated (via the ad→adset→campaign map built during entity sync).
 - First run after connect (no watermark): backfill `backfill_days` (default 365)
   in month-sized chunks, one `sync_job` per chunk, oldest first.
 - Time is injectable: `incremental_range(..., today=)` and
@@ -177,13 +181,13 @@ Derived metrics are null when their denominator is zero.
   Later migrations are normal Alembic operations.
 
 ## §8 Status
-Built and tested (19 passing tests): auth, token encryption, the connector SDK,
-the full **Meta Ads**, **Google Ads**, and **GA4** connectors, the idempotent
-sync engine (two dataset shapes: ad and web), dataset-aware watermark/backfill,
-schedule ticking, the metrics + web-metrics APIs, and a blended cross-platform
-`/metrics` query. Adding Google needed no `app/core`/`app/api` changes; GA4
-needed no `app/core` changes and only additive `app/api` surface for its
-service-account auth mode and web-metrics endpoint. Not yet built: the remaining
-Phase 5 connectors — TikTok, Snapchat, FB Pages + Instagram, GTM; the dashboard
+Built and tested (25 passing tests): auth, token encryption, the connector SDK,
+five connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads** — the
+idempotent sync engine (ad + web dataset shapes, with ad-level parent
+derivation), dataset-aware watermark/backfill, schedule ticking, the metrics +
+web-metrics APIs, and a blended cross-platform `/metrics` query. Every paid
+connector after Meta needed no `app/core` changes; GA4 added service-account
+`app/api` surface and TikTok added an `auth_code` alias on the OAuth callback.
+Not yet built: FB Pages + Instagram and GTM (the rest of Phase 5); the dashboard
 (Phase 6); exports/API keys/saved reports (Phase 7); and production
 hardening/monitoring (Phase 8).

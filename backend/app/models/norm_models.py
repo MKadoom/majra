@@ -179,3 +179,31 @@ class RawGA4Report(Base):
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RawTikTokReport(Base):
+    """Append-only raw layer for TikTok Ads report rows (SPEC §3)."""
+
+    __tablename__ = "tiktok_reports"
+    __table_args__ = {"schema": "raw"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    connection_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    account_external_id: Mapped[str] = mapped_column(String(120))
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RawSnapchatStats(Base):
+    """Append-only raw layer for Snapchat Ads stats rows (SPEC §3)."""
+
+    __tablename__ = "snapchat_stats"
+    __table_args__ = {"schema": "raw"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    connection_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    account_external_id: Mapped[str] = mapped_column(String(120))
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

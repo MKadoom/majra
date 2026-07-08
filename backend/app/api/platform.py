@@ -48,7 +48,16 @@ def connect(platform: str, user: User = Depends(get_current_user)):
 
 
 @router.get("/connect/{platform}/callback", response_class=HTMLResponse)
-def callback(platform: str, code: str, state: str, db: Session = Depends(get_db)):
+def callback(
+    platform: str,
+    state: str,
+    code: str | None = None,
+    auth_code: str | None = None,  # TikTok returns the code under this name
+    db: Session = Depends(get_db),
+):
+    auth = code or auth_code
+    if not auth:
+        raise HTTPException(400, "missing authorization code")
     try:
         payload = decode_token(state, "oauth_state")
     except pyjwt.PyJWTError:
@@ -58,7 +67,7 @@ def callback(platform: str, code: str, state: str, db: Session = Depends(get_db)
 
     connector = get_connector(platform)
     try:
-        tokens = connector.exchange_code(code, _redirect_uri(platform))
+        tokens = connector.exchange_code(auth, _redirect_uri(platform))
     except PermanentError as exc:
         raise HTTPException(400, str(exc))
 
