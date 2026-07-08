@@ -44,14 +44,23 @@ raise `PermanentError` for the rest (the Google connector supports `none`,
 `country`, `device`).
 
 A connector is a self-contained drop-in under `app/connectors/<slug>/` and needs
-no edits to `app/core` or `app/api`:
+no edits to `app/core` (and usually none to `app/api`):
 - It declares `raw_model` (a class attribute pointing at its append-only raw
   table, or `None`); the sync engine reads `connector.raw_model` — there is no
   central registry to edit.
+- It declares `dataset` — which fact shape it feeds. The engine dispatches on
+  this (`app.services.sync.DATASET_HANDLERS`): `ad_performance` (Meta, Google,
+  and later TikTok/Snapchat) or `web_performance` (GA4). Reusing an existing
+  shape needs no engine change; a genuinely new shape adds one handler.
+- It declares `auth_kind` — `oauth` (browser flow via `/connect/{platform}`) or
+  `service_account` (credentials posted to `/connections/service-account`, then
+  `credentials_from_input` builds the stored token blob). GA4 is the first
+  service-account connector; that new auth mode is the one thing that required
+  new `app/api` surface.
 - It may carry its own settings. Meta reads the shared `Settings`
-  (`app/core/config.py`), built in Phase 1; the Google connector instead defines
-  a connector-scoped `GoogleAdsSettings` inside its own package (same `MAJRA_`
-  env prefix). Either pattern is fine.
+  (`app/core/config.py`); the Google connector defines a connector-scoped
+  `GoogleAdsSettings` inside its own package (same `MAJRA_` env prefix). GA4
+  needs no env config — its credentials live per-connection.
 The raw-table model itself lives in `app.models` so it registers in the metadata
 for migrations.
 
@@ -94,8 +103,15 @@ RULES:
 - Month partitioning of the fact table is a v2 migration; not needed at current
   volumes.
 
-Other facts (later phases): `fact_web_performance` (GA4), `fact_social_performance`
-(Pages/IG), `gtm_*` config-snapshot tables with a `captured_at` column.
+Other facts:
+- `fact_web_performance` (GA4) — built. Columns: `date, account_id,
+  source, medium, campaign_name, sessions, users, conversions, revenue`.
+  Dimensioned by traffic source/medium/campaign (strings, no ad hierarchy); no
+  `breakdown` column. Idempotency via delete+insert scoped to (account, date
+  range). Revenue is in the property's currency (ISO mapping is a v2 concern).
+  Queried via `GET /web-metrics` (group by date/source/medium/campaign/account).
+- `fact_social_performance` (Pages/IG) and `gtm_*` config-snapshot tables with a
+  `captured_at` column — later in Phase 5.
 
 Raw layer (schema `raw`): one append-only table per platform+endpoint —
 `meta_insights(id, connection_id, account_external_id, params jsonb,
@@ -103,7 +119,9 @@ payload jsonb, fetched_at)`. Raw is the re-normalization source of truth and is
 never mutated.
 
 ## §4 Sync semantics (`app/services/sync.py`, `app/services/schedules.py`)
-- Watermark = `max(date)` present per (connection, breakdown set).
+- Watermark = `max(date)` present per (connection, breakdown set). It is
+  dataset-aware: web (GA4) connections read `fact_web_performance`, ad
+  connections read `fact_ad_performance`. So scheduling works for both.
 - A scheduled run fetches `[watermark - restatement_days, yesterday]`;
   `restatement_days` default 7 (platforms restate conversions retroactively).
 - Write path (`run_sync`): append raw pages, upsert dims, then **delete+insert**
@@ -159,12 +177,13 @@ Derived metrics are null when their denominator is zero.
   Later migrations are normal Alembic operations.
 
 ## §8 Status
-Built and tested (14 passing tests): auth, token encryption, the connector SDK,
-the full **Meta Ads** and **Google Ads** connectors (OAuth — long-lived tokens
-for Meta, refresh-token flow for Google — paginated insights + normalization),
-the idempotent sync engine, watermark/backfill logic, schedule ticking, the
-metrics API, and a blended cross-platform `/metrics` query. Adding Google
-required no changes to `app/core` or `app/api`. Not yet built: the remaining
-connectors — GA4, TikTok, Snapchat, FB Pages + Instagram, GTM (Phase 5); the
-dashboard (Phase 6); exports/API keys/saved reports (Phase 7); and production
+Built and tested (19 passing tests): auth, token encryption, the connector SDK,
+the full **Meta Ads**, **Google Ads**, and **GA4** connectors, the idempotent
+sync engine (two dataset shapes: ad and web), dataset-aware watermark/backfill,
+schedule ticking, the metrics + web-metrics APIs, and a blended cross-platform
+`/metrics` query. Adding Google needed no `app/core`/`app/api` changes; GA4
+needed no `app/core` changes and only additive `app/api` surface for its
+service-account auth mode and web-metrics endpoint. Not yet built: the remaining
+Phase 5 connectors — TikTok, Snapchat, FB Pages + Instagram, GTM; the dashboard
+(Phase 6); exports/API keys/saved reports (Phase 7); and production
 hardening/monitoring (Phase 8).

@@ -66,11 +66,25 @@ class BaseConnector(ABC):
     # edits (SPEC §3). The model itself lives in app.models so it registers in
     # the metadata for migrations.
     raw_model: ClassVar[type | None] = None
+    # Which sync shape / fact table this connector feeds. The engine dispatches
+    # on this (see app.services.sync.DATASET_HANDLERS). Ad platforms use the
+    # default; GA4 uses "web_performance".
+    dataset: ClassVar[str] = "ad_performance"
+    # How connections are created: "oauth" (browser flow via /connect/{platform})
+    # or "service_account" (credentials posted to /connections/service-account).
+    auth_kind: ClassVar[str] = "oauth"
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if cls.platform:
             CONNECTORS[cls.platform] = cls
+
+    def credentials_from_input(self, payload: dict) -> "TokenSet":
+        """Build the stored token blob for a service-account connection from
+        user-supplied credentials. OAuth connectors don't use this."""
+        raise PermanentError(
+            f"{self.platform or 'this platform'} uses OAuth; connect via /connect"
+        )
 
     # ------------------------------------------------------------- auth
     @abstractmethod

@@ -28,10 +28,13 @@ Python 3.12 · FastAPI · SQLAlchemy 2 + Alembic · Postgres 16 · Redis 7 · Ce
 - Env vars prefixed `MAJRA_`; secrets never logged.
 - Three Postgres schemas: `app`, `raw`, `norm`.
 - Add a connector by subclassing `BaseConnector` under `app/connectors/<slug>/`
-  and nothing else — proven twice now (Meta and Google Ads slotted in with zero
-  edits to `app/core` or `app/api`). A connector declares its own `raw_model`
-  (class attribute) and may carry its own settings object; if you think you need
-  to change `core/` or `api/`, stop and say why first.
+  and nothing else — proven three times now (Meta, Google Ads, GA4). A connector
+  declares `raw_model`, `dataset` (`ad_performance` | `web_performance`), and
+  `auth_kind` (`oauth` | `service_account`), and may carry its own settings.
+  Reusing an existing dataset shape needs no engine edits; a new shape adds one
+  handler in `app.services.sync.DATASET_HANDLERS`. A new auth mode (service
+  account) is the one thing that needed `app/api` surface. If you think you need
+  to change `app/core`, stop and say why first.
 - Facts are written delete+insert (idempotent); never add a unique constraint to
   make upserts work.
 - Run `python -m pytest -q` (from `backend/`, with `PYTHONPATH=.`) — keep it

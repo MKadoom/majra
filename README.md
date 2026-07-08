@@ -15,18 +15,19 @@ tested code — not scaffolding.
 | 2 | Connector SDK + full **Meta Ads** connector (OAuth → insights → warehouse) | ✅ built + tested |
 | 3 | Celery scheduling, incremental sync, restatement, retries, idempotency | ✅ built + tested |
 | 4 | Google Ads connector (proves the plugin architecture) | ✅ built + tested |
-| 5 | GA4 · TikTok · Snapchat · FB Pages + Instagram · GTM | ▢ next |
+| 5 | GA4 ✅ · TikTok · Snapchat · FB Pages + Instagram · GTM | ◐ GA4 done; rest next |
 | 6 | Next.js dashboard | ▢ |
 | 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ▢ |
 | 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ |
 
-**14 tests pass** covering auth, token encryption, the connector SDK, Meta and
-Google Ads normalization, full end-to-end syncs against mocked platform APIs
-(with pagination), idempotent re-sync, watermark/backfill logic, schedule
-ticking, the metrics API, and a **blended Meta + Google `/metrics` query** — two
-platforms answered from a single query. Adding Google required **zero changes to
-`app/core` or `app/api`**: a connector is a genuine drop-in under
-`app/connectors/`. See `docs/SPEC.md` for the binding contract.
+**19 tests pass** covering auth, token encryption, the connector SDK, Meta,
+Google Ads, and **GA4** normalization, full end-to-end syncs against mocked
+platform APIs (with pagination), idempotent re-sync, watermark/backfill logic,
+schedule ticking, the metrics API, and a blended Meta + Google `/metrics` query.
+GA4 is the architecturally distinct one — **service-account auth** (not OAuth), a
+**second fact shape** (`fact_web_performance`), queried via a separate
+`/web-metrics` endpoint — and it slotted in behind the same connector SDK with
+**zero changes to `app/core`**. See `docs/SPEC.md` for the binding contract.
 
 ## The three things only you can do
 

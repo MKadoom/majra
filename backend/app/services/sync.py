@@ -14,7 +14,7 @@ from app.connectors.base import PermanentError, TokenSet, get_connector
 from app.core.security import decrypt_tokens
 from app.models import (
     Account, Ad, Adset, Campaign, Connection, FactAdPerformance,
-    SyncJob, SyncLog,
+    FactWebPerformance, SyncJob, SyncLog,
 )
 
 log = structlog.get_logger()
@@ -145,6 +145,151 @@ def _resolve_dims(db, acc, norm, camp_map, adset_map, ad_map):
 
 
 # ------------------------------------------------------------------ main
+def _append_raw(db, raw_model, conn, job, account_external_id, payload) -> None:
+    if raw_model is None:
+        return
+    db.add(
+        raw_model(
+            connection_id=conn.id,
+            account_external_id=account_external_id,
+            params={
+                "breakdown": job.breakdown,
+                "date_from": job.date_from.isoformat(),
+                "date_to": job.date_to.isoformat(),
+            },
+            payload=payload,
+        )
+    )
+
+
+def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
+    """Ad platforms (Meta, Google, TikTok, Snapchat): dims + fact_ad_performance."""
+    raw_model = connector.raw_model
+    total_rows = 0
+    facts: list[dict] = []
+    for acc in accounts:
+        camp_map, adset_map, ad_map = _sync_entities(db, connector, tokens, acc)
+        fetched = 0
+        for raw in connector.fetch_insights(
+            tokens, acc.external_id, job.date_from, job.date_to, job.breakdown
+        ):
+            _append_raw(db, raw_model, conn, job, acc.external_id, raw)
+            norm = connector.normalize_insight(raw, job.breakdown)
+            campaign_id, adset_id, ad_id = _resolve_dims(
+                db, acc, norm, camp_map, adset_map, ad_map
+            )
+            facts.append(
+                dict(
+                    date=date.fromisoformat(norm["date"]),
+                    platform=conn.platform,
+                    account_id=acc.id,
+                    campaign_id=campaign_id,
+                    adset_id=adset_id,
+                    ad_id=ad_id,
+                    breakdown=job.breakdown,
+                    country=norm.get("country"),
+                    device=norm.get("device"),
+                    age=norm.get("age"),
+                    gender=norm.get("gender"),
+                    placement=norm.get("placement"),
+                    spend=norm["spend"],
+                    currency=acc.currency,
+                    impressions=norm["impressions"],
+                    clicks=norm["clicks"],
+                    conversions=norm["conversions"],
+                    conversion_value=norm["conversion_value"],
+                    video_views=norm["video_views"],
+                    leads=norm["leads"],
+                    purchases=norm["purchases"],
+                )
+            )
+            fetched += 1
+        _log(db, job, "insights.fetched", account=acc.external_id, rows=fetched)
+        total_rows += fetched
+
+    acc_ids = [a.id for a in accounts]
+    deleted = 0
+    if acc_ids:
+        res = db.execute(
+            delete(FactAdPerformance).where(
+                FactAdPerformance.account_id.in_(acc_ids),
+                FactAdPerformance.breakdown == job.breakdown,
+                FactAdPerformance.date >= job.date_from,
+                FactAdPerformance.date <= job.date_to,
+            )
+        )
+        deleted = res.rowcount or 0
+    if facts:
+        db.bulk_insert_mappings(FactAdPerformance, facts)
+    return {
+        "accounts": len(accounts),
+        "rows_fetched": total_rows,
+        "rows_deleted": deleted,
+        "rows_inserted": len(facts),
+    }
+
+
+def _handle_web_performance(db, conn, connector, job, accounts, tokens) -> dict:
+    """Web analytics (GA4): no ad hierarchy; writes fact_web_performance,
+    dimensioned by source/medium/campaign. Delete+insert scoped by
+    (accounts, date range) — no breakdown column."""
+    raw_model = connector.raw_model
+    total_rows = 0
+    facts: list[dict] = []
+    for acc in accounts:
+        fetched = 0
+        for raw in connector.fetch_insights(
+            tokens, acc.external_id, job.date_from, job.date_to, job.breakdown
+        ):
+            _append_raw(db, raw_model, conn, job, acc.external_id, raw)
+            norm = connector.normalize_insight(raw, job.breakdown)
+            facts.append(
+                dict(
+                    date=date.fromisoformat(norm["date"]),
+                    account_id=acc.id,
+                    source=norm.get("source"),
+                    medium=norm.get("medium"),
+                    campaign_name=norm.get("campaign_name"),
+                    sessions=norm.get("sessions", 0),
+                    users=norm.get("users", 0),
+                    conversions=norm.get("conversions", 0),
+                    revenue=norm.get("revenue", 0),
+                )
+            )
+            fetched += 1
+        _log(db, job, "report.fetched", account=acc.external_id, rows=fetched)
+        total_rows += fetched
+
+    acc_ids = [a.id for a in accounts]
+    deleted = 0
+    if acc_ids:
+        res = db.execute(
+            delete(FactWebPerformance).where(
+                FactWebPerformance.account_id.in_(acc_ids),
+                FactWebPerformance.date >= job.date_from,
+                FactWebPerformance.date <= job.date_to,
+            )
+        )
+        deleted = res.rowcount or 0
+    if facts:
+        db.bulk_insert_mappings(FactWebPerformance, facts)
+    return {
+        "accounts": len(accounts),
+        "rows_fetched": total_rows,
+        "rows_deleted": deleted,
+        "rows_inserted": len(facts),
+    }
+
+
+# A connector declares its `dataset`; the engine picks the matching handler.
+# Adding a connector that reuses an existing shape needs no engine change; a
+# genuinely new data shape (like GA4's web analytics) adds one handler here.
+DATASET_HANDLERS = {
+    "ad_performance": _handle_ad_performance,
+    "web_performance": _handle_web_performance,
+}
+
+
 def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     job = db.get(SyncJob, sync_job_id)
     if job is None:
@@ -158,90 +303,19 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     try:
         connector = get_connector(conn.platform)
         tokens = TokenSet.from_dict(decrypt_tokens(conn.encrypted_tokens))
-        raw_model = connector.raw_model
 
         accounts = _upsert_accounts(db, conn, connector.fetch_accounts(tokens))
         _log(db, job, "accounts.synced", count=len(accounts))
 
-        total_rows = 0
-        facts: list[dict] = []
-        for acc in accounts:
-            camp_map, adset_map, ad_map = _sync_entities(db, connector, tokens, acc)
-            fetched = 0
-            for raw in connector.fetch_insights(
-                tokens, acc.external_id, job.date_from, job.date_to, job.breakdown
-            ):
-                if raw_model is not None:
-                    db.add(
-                        raw_model(
-                            connection_id=conn.id,
-                            account_external_id=acc.external_id,
-                            params={
-                                "breakdown": job.breakdown,
-                                "date_from": job.date_from.isoformat(),
-                                "date_to": job.date_to.isoformat(),
-                            },
-                            payload=raw,
-                        )
-                    )
-                norm = connector.normalize_insight(raw, job.breakdown)
-                campaign_id, adset_id, ad_id = _resolve_dims(
-                    db, acc, norm, camp_map, adset_map, ad_map
-                )
-                facts.append(
-                    dict(
-                        date=date.fromisoformat(norm["date"]),
-                        platform=conn.platform,
-                        account_id=acc.id,
-                        campaign_id=campaign_id,
-                        adset_id=adset_id,
-                        ad_id=ad_id,
-                        breakdown=job.breakdown,
-                        country=norm.get("country"),
-                        device=norm.get("device"),
-                        age=norm.get("age"),
-                        gender=norm.get("gender"),
-                        placement=norm.get("placement"),
-                        spend=norm["spend"],
-                        currency=acc.currency,
-                        impressions=norm["impressions"],
-                        clicks=norm["clicks"],
-                        conversions=norm["conversions"],
-                        conversion_value=norm["conversion_value"],
-                        video_views=norm["video_views"],
-                        leads=norm["leads"],
-                        purchases=norm["purchases"],
-                    )
-                )
-                fetched += 1
-            _log(db, job, "insights.fetched", account=acc.external_id, rows=fetched)
-            total_rows += fetched
-
-        # Idempotent write: delete the exact scope, then insert (one transaction).
-        acc_ids = [a.id for a in accounts]
-        deleted = 0
-        if acc_ids:
-            res = db.execute(
-                delete(FactAdPerformance).where(
-                    FactAdPerformance.account_id.in_(acc_ids),
-                    FactAdPerformance.breakdown == job.breakdown,
-                    FactAdPerformance.date >= job.date_from,
-                    FactAdPerformance.date <= job.date_to,
-                )
-            )
-            deleted = res.rowcount or 0
-        if facts:
-            db.bulk_insert_mappings(FactAdPerformance, facts)
+        handler = DATASET_HANDLERS.get(connector.dataset)
+        if handler is None:
+            raise PermanentError(f"no sync handler for dataset '{connector.dataset}'")
+        stats = handler(db, conn, connector, job, accounts, tokens)
 
         job.status = "success"
-        job.stats = {
-            "accounts": len(accounts),
-            "rows_fetched": total_rows,
-            "rows_deleted": deleted,
-            "rows_inserted": len(facts),
-        }
+        job.stats = stats
         job.finished_at = datetime.now(timezone.utc)
-        _log(db, job, "sync.finished", **job.stats)
+        _log(db, job, "sync.finished", **stats)
         db.commit()
         return job
     except Exception as exc:
@@ -256,6 +330,16 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
 
 # ------------------------------------------------------------- watermarks
 def watermark(db: Session, connection_id: int, breakdown: str) -> date | None:
+    """Max synced date for a connection. Picks the fact table by the connector's
+    dataset so web (GA4) connections get their own watermark, not the ad one."""
+    conn = db.get(Connection, connection_id)
+    dataset = get_connector(conn.platform).dataset if conn else "ad_performance"
+    if dataset == "web_performance":
+        return db.scalar(
+            select(func.max(FactWebPerformance.date))
+            .join(Account, Account.id == FactWebPerformance.account_id)
+            .where(Account.connection_id == connection_id)
+        )
     return db.scalar(
         select(func.max(FactAdPerformance.date))
         .join(Account, Account.id == FactAdPerformance.account_id)

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import jwt as pyjwt
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,7 +23,12 @@ def _redirect_uri(platform: str) -> str:
 
 @router.get("/platforms")
 def platforms():
-    return {"platforms": sorted(CONNECTORS.keys())}
+    return {
+        "platforms": [
+            {"platform": p, "auth_kind": c.auth_kind}
+            for p, c in sorted(CONNECTORS.items())
+        ]
+    }
 
 
 @router.get("/connect/{platform}")
@@ -32,6 +38,11 @@ def connect(platform: str, user: User = Depends(get_current_user)):
     if platform not in CONNECTORS:
         raise HTTPException(404, f"unknown platform '{platform}'")
     connector = get_connector(platform)
+    if connector.auth_kind != "oauth":
+        raise HTTPException(
+            400, f"'{platform}' uses {connector.auth_kind}; "
+                 "use POST /connections/service-account"
+        )
     state = create_oauth_state(user.id, platform)
     return {"auth_url": connector.auth_url(state, _redirect_uri(platform))}
 
@@ -84,3 +95,45 @@ def list_connections(
         }
         for c in rows
     ]
+
+
+class ServiceAccountConnection(BaseModel):
+    platform: str
+    service_account: dict          # the full service-account JSON key
+    property_id: str               # GA4 property id (numeric)
+    name: str | None = None
+
+
+@router.post("/connections/service-account", status_code=201)
+def create_service_account_connection(
+    body: ServiceAccountConnection,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a connection for a service-account platform (e.g. GA4): the user
+    supplies the SA JSON + property id (granted Viewer on their property) rather
+    than going through a browser OAuth flow."""
+    if body.platform not in CONNECTORS:
+        raise HTTPException(404, f"unknown platform '{body.platform}'")
+    connector = get_connector(body.platform)
+    if connector.auth_kind != "service_account":
+        raise HTTPException(
+            400, f"'{body.platform}' uses OAuth; use GET /connect/{body.platform}"
+        )
+    try:
+        tokens = connector.credentials_from_input(
+            {"service_account": body.service_account, "property_id": body.property_id}
+        )
+    except PermanentError as exc:
+        raise HTTPException(422, str(exc))
+
+    conn = Connection(
+        user_id=user.id,
+        platform=body.platform,
+        name=body.name or f"{body.platform} · property {body.property_id}",
+        encrypted_tokens=encrypt_tokens(tokens.to_dict()),
+    )
+    db.add(conn)
+    db.commit()
+    return {"id": conn.id, "platform": conn.platform, "name": conn.name,
+            "status": conn.status, "created_at": conn.created_at}

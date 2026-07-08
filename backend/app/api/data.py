@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.models import Connection, Schedule, SyncJob, SyncLog, User
 from app.services.metrics import query_metrics
+from app.services.web_metrics import query_web_metrics
 
 router = APIRouter(tags=["data"])
 
@@ -215,6 +216,34 @@ def metrics(
         platforms=platform,
         account_ids=account_id,
         campaign_ids=campaign_id,
+        group_by=group_by,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/web-metrics")
+def web_metrics(
+    date_from: date,
+    date_to: date,
+    account_id: list[int] | None = Query(None),
+    source: list[str] | None = Query(None),
+    group_by: list[str] | None = Query(None),
+    sort: str | None = None,
+    page: int = 1,
+    page_size: int = Query(100, le=1000),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Query GA4 web-analytics facts (sessions/users/conversions/revenue),
+    grouped by any of: date, source, medium, campaign, account."""
+    return query_web_metrics(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        account_ids=account_id,
+        sources=source,
         group_by=group_by,
         sort=sort,
         page=page,
