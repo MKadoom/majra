@@ -6,8 +6,9 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Schedule, SyncJob
+from app.models import Connection, Schedule, SyncJob
 from app.services.sync import backfill_chunks, incremental_range
+from app.connectors.base import get_connector
 
 CADENCE_DELTA = {
     "hourly": timedelta(hours=1),
@@ -37,6 +38,21 @@ def tick_schedules(db: Session, now: datetime | None = None) -> list[int]:
     for s in db.scalars(select(Schedule).where(Schedule.enabled.is_(True))):
         if not _is_due(s, now):
             continue
+
+        conn = db.get(Connection, s.connection_id)
+        dataset = get_connector(conn.platform).dataset if conn else "ad_performance"
+        if dataset == "config_snapshot":
+            # No date range for snapshots — one capture per due tick.
+            job = SyncJob(
+                connection_id=s.connection_id, kind="scheduled",
+                date_from=now.date(), date_to=now.date(), breakdown="none",
+            )
+            db.add(job)
+            db.flush()
+            created.append(job.id)
+            s.last_enqueued_at = now
+            continue
+
         breakdowns = s.breakdowns or ["none"]
         for bd in breakdowns:
             rng = incremental_range(

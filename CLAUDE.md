@@ -28,11 +28,11 @@ Python 3.12 · FastAPI · SQLAlchemy 2 + Alembic · Postgres 16 · Redis 7 · Ce
 - Env vars prefixed `MAJRA_`; secrets never logged.
 - Three Postgres schemas: `app`, `raw`, `norm`.
 - Add a connector by subclassing `BaseConnector` under `app/connectors/<slug>/`
-  and nothing else — proven six times now (Meta, Google Ads, GA4, TikTok,
-  Snapchat, Facebook Pages + Instagram). A connector declares `raw_model`,
-  `dataset` (`ad_performance` | `web_performance` | `social_performance`), and
-  `auth_kind` (`oauth` | `service_account`), and may carry its own settings.
-  Reusing a dataset shape needs no engine edits; a new
+  and nothing else — proven seven times now (Meta, Google Ads, GA4, TikTok,
+  Snapchat, Facebook Pages + Instagram, GTM). A connector declares `raw_model`,
+  `dataset` (`ad_performance` | `web_performance` | `social_performance` |
+  `config_snapshot`), and `auth_kind` (`oauth` | `service_account`), and may
+  carry its own settings. Reusing a dataset shape needs no engine edits; a new
   shape adds one handler in `app.services.sync.DATASET_HANDLERS`. Ad-level-only
   reporters (TikTok/Snapchat) get campaign/ad-set derived from the entity
   hierarchy automatically. If you think you need to change `app/core`, stop and

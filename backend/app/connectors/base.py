@@ -86,6 +86,11 @@ class BaseConnector(ABC):
             f"{self.platform or 'this platform'} uses OAuth; connect via /connect"
         )
 
+    def snapshot(self, tokens: "TokenSet", account_external_id: str) -> "Iterator[dict]":
+        """Yield config records for a `config_snapshot` dataset (e.g. GTM):
+        dicts with a `kind` plus its fields. Fact connectors don't use this."""
+        raise PermanentError(f"{self.platform or 'this platform'} has no config snapshot")
+
     # ------------------------------------------------------------- auth
     @abstractmethod
     def auth_url(self, state: str, redirect_uri: str) -> str: ...

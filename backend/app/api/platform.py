@@ -109,7 +109,7 @@ def list_connections(
 class ServiceAccountConnection(BaseModel):
     platform: str
     service_account: dict          # the full service-account JSON key
-    property_id: str               # GA4 property id (numeric)
+    property_id: str | None = None  # GA4 property id; optional (GTM: account filter)
     name: str | None = None
 
 
@@ -119,9 +119,9 @@ def create_service_account_connection(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a connection for a service-account platform (e.g. GA4): the user
-    supplies the SA JSON + property id (granted Viewer on their property) rather
-    than going through a browser OAuth flow."""
+    """Create a connection for a service-account platform (GA4, GTM): the user
+    supplies the SA JSON (granted access on their property/container) rather than
+    going through a browser OAuth flow."""
     if body.platform not in CONNECTORS:
         raise HTTPException(404, f"unknown platform '{body.platform}'")
     connector = get_connector(body.platform)
@@ -136,10 +136,14 @@ def create_service_account_connection(
     except PermanentError as exc:
         raise HTTPException(422, str(exc))
 
+    label = body.name or (
+        f"{body.platform} · property {body.property_id}" if body.property_id
+        else body.platform
+    )
     conn = Connection(
         user_id=user.id,
         platform=body.platform,
-        name=body.name or f"{body.platform} · property {body.property_id}",
+        name=label,
         encrypted_tokens=encrypt_tokens(tokens.to_dict()),
     )
     db.add(conn)

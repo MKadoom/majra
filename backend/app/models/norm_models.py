@@ -245,3 +245,42 @@ class RawMetaSocial(Base):
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GtmResource(Base):
+    """Config snapshot of a GTM setup (GTM has no daily metrics). Each sync
+    appends a full snapshot stamped with one `captured_at`, so the table is
+    audit history — the current config is the rows at the latest captured_at.
+    `kind` is container | workspace | tag | trigger | variable; `data` holds the
+    type-specific payload."""
+
+    __tablename__ = "gtm_resources"
+    __table_args__ = (
+        Index("ix_gtm_account_captured", "account_id", "captured_at"),
+        {"schema": "norm"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("norm.accounts.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(30))
+    container_external_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    workspace_external_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RawGtmSnapshot(Base):
+    """Append-only raw layer for GTM API responses (SPEC §3)."""
+
+    __tablename__ = "gtm_snapshots"
+    __table_args__ = {"schema": "raw"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    connection_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    account_external_id: Mapped[str] = mapped_column(String(120))
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

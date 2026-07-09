@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
@@ -278,3 +278,41 @@ def social_metrics(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/gtm-resources")
+def gtm_resources(
+    account_id: int | None = None,
+    kind: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the latest GTM config snapshot (rows at the most recent
+    captured_at), optionally filtered by account and resource kind."""
+    from app.models import Account, GtmResource
+
+    latest = db.scalar(
+        select(func.max(GtmResource.captured_at))
+        .join(Account, Account.id == GtmResource.account_id)
+        .where(Account.platform == "gtm")
+    )
+    if latest is None:
+        return {"captured_at": None, "data": []}
+
+    stmt = select(GtmResource).where(GtmResource.captured_at == latest)
+    if account_id:
+        stmt = stmt.where(GtmResource.account_id == account_id)
+    if kind:
+        stmt = stmt.where(GtmResource.kind == kind)
+    rows = db.scalars(stmt.order_by(GtmResource.id))
+    return {
+        "captured_at": latest.isoformat(),
+        "data": [
+            {
+                "kind": r.kind, "external_id": r.external_id, "name": r.name,
+                "type": r.type, "container_external_id": r.container_external_id,
+                "workspace_external_id": r.workspace_external_id, "data": r.data,
+            }
+            for r in rows
+        ],
+    }

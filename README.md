@@ -15,26 +15,29 @@ tested code — not scaffolding.
 | 2 | Connector SDK + full **Meta Ads** connector (OAuth → insights → warehouse) | ✅ built + tested |
 | 3 | Celery scheduling, incremental sync, restatement, retries, idempotency | ✅ built + tested |
 | 4 | Google Ads connector (proves the plugin architecture) | ✅ built + tested |
-| 5 | GA4 ✅ · TikTok ✅ · Snapchat ✅ · FB Pages + Instagram ✅ · GTM | ◐ GTM left |
-| 6 | Next.js dashboard | ▢ |
+| 5 | GA4 ✅ · TikTok ✅ · Snapchat ✅ · FB Pages + Instagram ✅ · GTM ✅ | ✅ complete |
+| 6 | Next.js dashboard | ▢ next |
 | 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ▢ |
 | 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ |
 
-**29 tests pass** covering auth, token encryption, the connector SDK, six
-connectors — Meta, Google Ads, GA4, TikTok, Snapchat, and **Facebook Pages +
-Instagram** — with full end-to-end syncs against mocked platform APIs
-(pagination, token refresh, nested-stats flattening, metric pivoting,
-micro-currency), idempotent re-sync, dataset-aware watermark/backfill, schedule
-ticking, the metrics / web-metrics / social-metrics APIs, and a blended
-cross-platform `/metrics` query. Every connector after Meta slotted in behind the
-same SDK with **zero changes to `app/core`**. See `docs/SPEC.md` for the binding
-contract.
+**32 tests pass** covering auth, token encryption, the connector SDK, all seven
+connectors — Meta, Google Ads, GA4, TikTok, Snapchat, Facebook Pages +
+Instagram, and **GTM** — with full end-to-end syncs against mocked platform APIs
+(pagination, OAuth + service-account auth, nested-stats flattening, metric
+pivoting, micro-currency, config-tree walks), idempotent re-sync, dataset-aware
+watermark/backfill, schedule ticking, the metrics / web-metrics / social-metrics
+APIs, `/gtm-resources`, and a blended cross-platform `/metrics` query. Every
+connector after Meta slotted in behind the same SDK with **zero changes to
+`app/core`**. See `docs/SPEC.md` for the binding contract.
 
-Three data shapes now flow through one engine: **ad performance** (Meta, Google,
-TikTok, Snapchat → `/metrics`), **web analytics** (GA4 → `/web-metrics`), and
-**organic social** (FB Pages + Instagram → `/social-metrics`). The paid platforms
-blend in a single `/metrics` query; ad-level-only reporters (TikTok, Snapchat)
-get their campaign/ad-set derived from the entity hierarchy.
+Four data shapes now flow through one engine: **ad performance** (Meta, Google,
+TikTok, Snapchat → `/metrics`), **web analytics** (GA4 → `/web-metrics`),
+**organic social** (FB Pages + Instagram → `/social-metrics`), and **config
+snapshots** (GTM → `/gtm-resources`, append-only audit history). The paid
+platforms blend in a single `/metrics` query; ad-level-only reporters (TikTok,
+Snapchat) get their campaign/ad-set derived from the entity hierarchy.
+
+**The connector layer (Phases 2–5) is complete.** Next is the dashboard.
 
 ## The three things only you can do
 

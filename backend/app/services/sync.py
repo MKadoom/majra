@@ -14,7 +14,7 @@ from app.connectors.base import PermanentError, TokenSet, get_connector
 from app.core.security import decrypt_tokens
 from app.models import (
     Account, Ad, Adset, Campaign, Connection, FactAdPerformance,
-    FactSocialPerformance, FactWebPerformance, SyncJob, SyncLog,
+    FactSocialPerformance, FactWebPerformance, GtmResource, SyncJob, SyncLog,
 )
 
 log = structlog.get_logger()
@@ -358,6 +358,47 @@ def _handle_social_performance(db, conn, connector, job, accounts, tokens) -> di
 
 
 DATASET_HANDLERS["social_performance"] = _handle_social_performance
+
+
+def _handle_config_snapshot(db, conn, connector, job, accounts, tokens) -> dict:
+    """Config snapshots (GTM): no date range, no facts. Each run APPENDS a full
+    snapshot stamped with one captured_at (audit history) — not delete+insert,
+    so re-running deliberately creates a new snapshot."""
+    raw_model = connector.raw_model
+    captured = datetime.now(timezone.utc)
+    total = 0
+    rows: list[dict] = []
+    for acc in accounts:
+        n = 0
+        for rec in connector.snapshot(tokens, acc.external_id):
+            _append_raw(db, raw_model, conn, job, acc.external_id, rec)
+            rows.append(
+                dict(
+                    account_id=acc.id,
+                    kind=rec["kind"],
+                    container_external_id=rec.get("container_external_id"),
+                    workspace_external_id=rec.get("workspace_external_id"),
+                    external_id=rec.get("external_id"),
+                    name=rec.get("name"),
+                    type=rec.get("type"),
+                    data=rec.get("data") or {},
+                    captured_at=captured,
+                )
+            )
+            n += 1
+        _log(db, job, "snapshot.captured", account=acc.external_id, resources=n)
+        total += n
+    if rows:
+        db.bulk_insert_mappings(GtmResource, rows)
+    return {
+        "accounts": len(accounts),
+        "rows_fetched": total,
+        "rows_deleted": 0,          # append-only
+        "rows_inserted": len(rows),
+    }
+
+
+DATASET_HANDLERS["config_snapshot"] = _handle_config_snapshot
 
 
 def run_sync(db: Session, sync_job_id: int) -> SyncJob:

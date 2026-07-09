@@ -12,21 +12,19 @@ Uses httpx + pyjwt (RS256) so the flow is mockable with respx like every other
 connector, and needs no extra dependency.
 """
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from typing import Iterator
 
 import httpx
-import jwt
 
 from app.connectors.base import (
     AccountInfo, BaseConnector, Level, PermanentError, TokenSet, TransientError,
 )
+from app.connectors.google_sa import mint_access
 from app.models import RawGA4Report
 
 DATA_API = "https://analyticsdata.googleapis.com/v1beta"
-TOKEN_URI = "https://oauth2.googleapis.com/token"
 SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
-JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 
 # Fixed report shape (positions matter for normalization).
 DIMENSIONS = ["date", "sessionSource", "sessionMedium", "sessionCampaignName"]
@@ -148,32 +146,7 @@ class GA4Connector(BaseConnector):
         sa = tokens.extra.get("service_account")
         if not isinstance(sa, dict):
             raise PermanentError("ga4: connection missing service_account")
-        now = int(time.time())
-        assertion = jwt.encode(
-            {
-                "iss": sa["client_email"],
-                "scope": SCOPE,
-                "aud": sa.get("token_uri", TOKEN_URI),
-                "iat": now,
-                "exp": now + 3600,
-            },
-            sa["private_key"],
-            algorithm="RS256",
-            headers={"kid": sa.get("private_key_id")} if sa.get("private_key_id") else None,
-        )
-        try:
-            resp = httpx.post(
-                sa.get("token_uri", TOKEN_URI),
-                data={"grant_type": JWT_BEARER, "assertion": assertion},
-                timeout=60,
-            )
-        except httpx.HTTPError as exc:
-            raise TransientError(f"ga4: token network error {exc}")
-        data = resp.json()
-        if resp.status_code >= 400 or "error" in data:
-            detail = data.get("error_description") or data.get("error") or resp.status_code
-            raise PermanentError(f"ga4: token exchange failed — {detail}")
-        return data["access_token"]
+        return mint_access(sa, SCOPE)
 
     def _token(self, tokens: TokenSet) -> str:
         if self._access is None:
