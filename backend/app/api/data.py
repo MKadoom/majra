@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.models import Connection, Schedule, SyncJob, SyncLog, User
 from app.services.metrics import query_metrics
+from app.services.social_metrics import query_social_metrics
 from app.services.web_metrics import query_web_metrics
 
 router = APIRouter(tags=["data"])
@@ -244,6 +245,34 @@ def web_metrics(
         date_to=date_to,
         account_ids=account_id,
         sources=source,
+        group_by=group_by,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/social-metrics")
+def social_metrics(
+    date_from: date,
+    date_to: date,
+    account_id: list[int] | None = Query(None),
+    grain: str | None = None,
+    group_by: list[str] | None = Query(None),
+    sort: str | None = None,
+    page: int = 1,
+    page_size: int = Query(100, le=1000),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Query Facebook Pages / Instagram organic facts (impressions, reach,
+    engagement, followers), grouped by date/grain/external_ref/account."""
+    return query_social_metrics(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        account_ids=account_id,
+        grain=grain,
         group_by=group_by,
         sort=sort,
         page=page,

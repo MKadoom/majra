@@ -167,6 +167,30 @@ class FactWebPerformance(Base):
     revenue: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
 
 
+class FactSocialPerformance(Base):
+    """Daily organic-social fact (Facebook Pages + Instagram). `grain` is the
+    kind of subject a row measures (page | ig_user | post), `external_ref` its
+    platform id. `followers` is a snapshot (as-of-date), not a daily flow — the
+    social-metrics query maxes it rather than summing. Idempotency via
+    delete+insert scoped to (account, date range)."""
+
+    __tablename__ = "fact_social_performance"
+    __table_args__ = (
+        Index("ix_social_date_account", "date", "account_id"),
+        {"schema": "norm"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    date: Mapped[object] = mapped_column(Date, nullable=False)
+    account_id: Mapped[int] = mapped_column(ForeignKey("norm.accounts.id"), nullable=False)
+    grain: Mapped[str] = mapped_column(String(30), default="page")
+    external_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    impressions: Mapped[int] = mapped_column(BigInteger, default=0)
+    reach: Mapped[int] = mapped_column(BigInteger, default=0)
+    engagement: Mapped[int] = mapped_column(BigInteger, default=0)
+    followers: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
 class RawGA4Report(Base):
     """Append-only raw layer for GA4 runReport responses (SPEC §3)."""
 
@@ -199,6 +223,20 @@ class RawSnapchatStats(Base):
     """Append-only raw layer for Snapchat Ads stats rows (SPEC §3)."""
 
     __tablename__ = "snapchat_stats"
+    __table_args__ = {"schema": "raw"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    connection_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    account_external_id: Mapped[str] = mapped_column(String(120))
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RawMetaSocial(Base):
+    """Append-only raw layer for Facebook Pages / Instagram insights (SPEC §3)."""
+
+    __tablename__ = "meta_social"
     __table_args__ = {"schema": "raw"}
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

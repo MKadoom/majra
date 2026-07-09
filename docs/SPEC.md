@@ -50,8 +50,9 @@ no edits to `app/core` (and usually none to `app/api`):
   central registry to edit.
 - It declares `dataset` — which fact shape it feeds. The engine dispatches on
   this (`app.services.sync.DATASET_HANDLERS`): `ad_performance` (Meta, Google,
-  and later TikTok/Snapchat) or `web_performance` (GA4). Reusing an existing
-  shape needs no engine change; a genuinely new shape adds one handler.
+  TikTok, Snapchat), `web_performance` (GA4), or `social_performance` (FB Pages +
+  Instagram). Reusing an existing shape needs no engine change; a genuinely new
+  shape adds one handler.
 - It declares `auth_kind` — `oauth` (browser flow via `/connect/{platform}`) or
   `service_account` (credentials posted to `/connections/service-account`, then
   `credentials_from_input` builds the stored token blob). GA4 is the first
@@ -110,8 +111,12 @@ Other facts:
   `breakdown` column. Idempotency via delete+insert scoped to (account, date
   range). Revenue is in the property's currency (ISO mapping is a v2 concern).
   Queried via `GET /web-metrics` (group by date/source/medium/campaign/account).
-- `fact_social_performance` (Pages/IG) and `gtm_*` config-snapshot tables with a
-  `captured_at` column — later in Phase 5.
+- `fact_social_performance` (Facebook Pages + Instagram) — built. Columns:
+  `date, account_id, grain, external_ref, impressions, reach, engagement,
+  followers`. `grain` is page | ig_user | post; `followers` is an as-of-date
+  snapshot (the `/social-metrics` query maxes it, the daily flows are summed).
+  Idempotency via delete+insert scoped to (account, date range).
+- `gtm_*` config-snapshot tables with a `captured_at` column — last, in Phase 5.
 
 Raw layer (schema `raw`): one append-only table per platform+endpoint —
 `meta_insights(id, connection_id, account_external_id, params jsonb,
@@ -181,13 +186,12 @@ Derived metrics are null when their denominator is zero.
   Later migrations are normal Alembic operations.
 
 ## §8 Status
-Built and tested (25 passing tests): auth, token encryption, the connector SDK,
-five connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads** — the
-idempotent sync engine (ad + web dataset shapes, with ad-level parent
-derivation), dataset-aware watermark/backfill, schedule ticking, the metrics +
-web-metrics APIs, and a blended cross-platform `/metrics` query. Every paid
-connector after Meta needed no `app/core` changes; GA4 added service-account
-`app/api` surface and TikTok added an `auth_code` alias on the OAuth callback.
-Not yet built: FB Pages + Instagram and GTM (the rest of Phase 5); the dashboard
+Built and tested (29 passing tests): auth, token encryption, the connector SDK,
+six connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads, Facebook
+Pages + Instagram** — the idempotent sync engine (three dataset shapes: ad, web,
+social, with ad-level parent derivation), dataset-aware watermark/backfill,
+schedule ticking, the metrics / web-metrics / social-metrics APIs, and a blended
+cross-platform `/metrics` query. Every connector after Meta needed no `app/core`
+changes. Not yet built: GTM (the last Phase 5 connector); the dashboard
 (Phase 6); exports/API keys/saved reports (Phase 7); and production
 hardening/monitoring (Phase 8).

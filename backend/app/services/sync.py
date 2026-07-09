@@ -14,7 +14,7 @@ from app.connectors.base import PermanentError, TokenSet, get_connector
 from app.core.security import decrypt_tokens
 from app.models import (
     Account, Ad, Adset, Campaign, Connection, FactAdPerformance,
-    FactWebPerformance, SyncJob, SyncLog,
+    FactSocialPerformance, FactWebPerformance, SyncJob, SyncLog,
 )
 
 log = structlog.get_logger()
@@ -302,7 +302,62 @@ def _handle_web_performance(db, conn, connector, job, accounts, tokens) -> dict:
 DATASET_HANDLERS = {
     "ad_performance": _handle_ad_performance,
     "web_performance": _handle_web_performance,
+    "social_performance": None,  # set below (defined after this comment)
 }
+
+
+def _handle_social_performance(db, conn, connector, job, accounts, tokens) -> dict:
+    """Organic social (Facebook Pages / Instagram): writes
+    fact_social_performance, rows keyed by (grain, external_ref). Delete+insert
+    scoped by (accounts, date range); no breakdown."""
+    raw_model = connector.raw_model
+    total_rows = 0
+    facts: list[dict] = []
+    for acc in accounts:
+        fetched = 0
+        for raw in connector.fetch_insights(
+            tokens, acc.external_id, job.date_from, job.date_to, job.breakdown
+        ):
+            _append_raw(db, raw_model, conn, job, acc.external_id, raw)
+            norm = connector.normalize_insight(raw, job.breakdown)
+            facts.append(
+                dict(
+                    date=date.fromisoformat(norm["date"]),
+                    account_id=acc.id,
+                    grain=norm.get("grain", "page"),
+                    external_ref=norm.get("external_ref"),
+                    impressions=norm.get("impressions", 0),
+                    reach=norm.get("reach", 0),
+                    engagement=norm.get("engagement", 0),
+                    followers=norm.get("followers", 0),
+                )
+            )
+            fetched += 1
+        _log(db, job, "social.fetched", account=acc.external_id, rows=fetched)
+        total_rows += fetched
+
+    acc_ids = [a.id for a in accounts]
+    deleted = 0
+    if acc_ids:
+        res = db.execute(
+            delete(FactSocialPerformance).where(
+                FactSocialPerformance.account_id.in_(acc_ids),
+                FactSocialPerformance.date >= job.date_from,
+                FactSocialPerformance.date <= job.date_to,
+            )
+        )
+        deleted = res.rowcount or 0
+    if facts:
+        db.bulk_insert_mappings(FactSocialPerformance, facts)
+    return {
+        "accounts": len(accounts),
+        "rows_fetched": total_rows,
+        "rows_deleted": deleted,
+        "rows_inserted": len(facts),
+    }
+
+
+DATASET_HANDLERS["social_performance"] = _handle_social_performance
 
 
 def run_sync(db: Session, sync_job_id: int) -> SyncJob:
@@ -344,25 +399,27 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
 
 
 # ------------------------------------------------------------- watermarks
+_FACT_BY_DATASET = {
+    "ad_performance": FactAdPerformance,
+    "web_performance": FactWebPerformance,
+    "social_performance": FactSocialPerformance,
+}
+
+
 def watermark(db: Session, connection_id: int, breakdown: str) -> date | None:
     """Max synced date for a connection. Picks the fact table by the connector's
-    dataset so web (GA4) connections get their own watermark, not the ad one."""
+    dataset so each shape (ad / web / social) gets its own watermark."""
     conn = db.get(Connection, connection_id)
     dataset = get_connector(conn.platform).dataset if conn else "ad_performance"
-    if dataset == "web_performance":
-        return db.scalar(
-            select(func.max(FactWebPerformance.date))
-            .join(Account, Account.id == FactWebPerformance.account_id)
-            .where(Account.connection_id == connection_id)
-        )
-    return db.scalar(
-        select(func.max(FactAdPerformance.date))
-        .join(Account, Account.id == FactAdPerformance.account_id)
-        .where(
-            Account.connection_id == connection_id,
-            FactAdPerformance.breakdown == breakdown,
-        )
+    fact = _FACT_BY_DATASET.get(dataset, FactAdPerformance)
+    stmt = (
+        select(func.max(fact.date))
+        .join(Account, Account.id == fact.account_id)
+        .where(Account.connection_id == connection_id)
     )
+    if dataset == "ad_performance":
+        stmt = stmt.where(fact.breakdown == breakdown)
+    return db.scalar(stmt)
 
 
 def incremental_range(
