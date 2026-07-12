@@ -19,7 +19,7 @@ up:
 	@echo "waiting for backend..."
 	@sleep 4
 	$(MAKE) migrate
-	@echo "up — API at http://localhost:8000  (docs at /docs)"
+	@echo "up — dashboard at http://localhost:3000 · API at http://localhost:8000 (docs at /docs)"
 
 down:
 	$(COMPOSE) down
@@ -38,6 +38,9 @@ revision:
 
 test:
 	$(COMPOSE) run --rm -e MAJRA_ENVIRONMENT=test backend python -m pytest -q
+
+web:
+	cd frontend && npm install && npm run dev
 
 shell:
 	$(COMPOSE) exec backend bash

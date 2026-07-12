@@ -42,6 +42,16 @@ Python 3.12 · FastAPI · SQLAlchemy 2 + Alembic · Postgres 16 · Redis 7 · Ce
 - Run `python -m pytest -q` (from `backend/`, with `PYTHONPATH=.`) — keep it
   green. Every connector needs fixture-based normalization tests.
 
+## Frontend (`frontend/`)
+Next.js 14 App Router + TypeScript + Tailwind + Recharts. Auth is server-side:
+both tokens sit in httpOnly cookies and every browser call goes through the proxy
+at `src/app/api/proxy/[...path]/route.ts`, which attaches the access token and
+silently refreshes on 401 — pages never handle tokens, and the backend needs no
+CORS. Design rules: colour belongs to the data (one hue per platform, in
+`PLATFORM_COLOR`), numbers use the `.num` class (mono + tabular), and layout is
+RTL-safe — logical properties only, never `left`/`right`. Verify with
+`npm run build` (it typechecks).
+
 ## Running locally
 `cp .env.example .env`, fill `MAJRA_ENCRYPTION_KEY` and `MAJRA_SECRET_KEY`, then
 `make up`. API at http://localhost:8000, OpenAPI docs at `/docs`.

@@ -74,5 +74,17 @@ services:
       redis:
         condition: service_healthy
 
+  frontend:
+    build: ../frontend
+    environment:
+      # The Next.js server talks to the backend over the compose network; the
+      # browser only ever talks to Next (via /api/proxy), so the backend needs
+      # no CORS and no token is exposed to client-side JavaScript.
+      MAJRA_API_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
 volumes:
   pgdata:

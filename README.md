@@ -16,8 +16,8 @@ tested code — not scaffolding.
 | 3 | Celery scheduling, incremental sync, restatement, retries, idempotency | ✅ built + tested |
 | 4 | Google Ads connector (proves the plugin architecture) | ✅ built + tested |
 | 5 | GA4 ✅ · TikTok ✅ · Snapchat ✅ · FB Pages + Instagram ✅ · GTM ✅ | ✅ complete |
-| 6 | Next.js dashboard | ▢ next |
-| 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ▢ |
+| 6 | Next.js dashboard | ✅ built + builds clean |
+| 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ▢ next |
 | 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ |
 
 **32 tests pass** covering auth, token encryption, the connector SDK, all seven
@@ -37,7 +37,32 @@ snapshots** (GTM → `/gtm-resources`, append-only audit history). The paid
 platforms blend in a single `/metrics` query; ad-level-only reporters (TikTok,
 Snapchat) get their campaign/ad-set derived from the entity hierarchy.
 
-**The connector layer (Phases 2–5) is complete.** Next is the dashboard.
+**The connector layer (Phases 2–5) is complete**, and there is now a dashboard.
+
+## The dashboard
+
+Next.js (App Router) + TypeScript + Tailwind + Recharts, at `frontend/`. Four
+pages: **Explore** (all four datasets — Ads, Web, Social, Tags — with KPIs, a
+time-series chart, a group-by breakdown table and CSV download), **Connections**,
+**Sync jobs** (with step-by-step logs), and **Settings**.
+
+Two things worth knowing about how it's built:
+
+- **No token ever reaches client-side JavaScript.** Both the access and refresh
+  tokens live in httpOnly cookies. Every browser call goes through a server-side
+  proxy at `/api/proxy/*`, which attaches the access token, and — if the backend
+  says it expired — refreshes it, retries, and rewrites the cookie, all without
+  the page knowing. As a side effect the backend needs no CORS at all.
+- **Colour belongs to the data.** The chrome is deliberately quiet; each platform
+  is a "tributary" with one hue used consistently in every chart, dot and legend.
+  Numbers are monospaced with tabular figures so columns align and digits don't
+  jitter. The signature element is the **channel strip** on each connection: one
+  tick per day for the last two weeks, lit where data landed and dark where it
+  didn't — so a broken connector reads as a hole in the channel without anyone
+  opening a log.
+
+The layout is RTL-safe throughout (logical properties only — `border-inline-end`,
+`ms-*`/`me-*`, `text-start`/`text-end`), so an Arabic locale flips it for free.
 
 ## The three things only you can do
 
@@ -66,9 +91,14 @@ cp .env.example .env
 #   MAJRA_ENCRYPTION_KEY ->  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
 make up                      # builds images, starts stack, runs migrations
-# API:  http://localhost:8000
-# Docs: http://localhost:8000/docs
+# Dashboard: http://localhost:3000
+# API:       http://localhost:8000
+# API docs:  http://localhost:8000/docs
 ```
+
+Open the dashboard, create an account, and add a connection. (For local
+development without Docker: `make web` runs the dashboard against a backend on
+`localhost:8000`.)
 
 Register and log in:
 

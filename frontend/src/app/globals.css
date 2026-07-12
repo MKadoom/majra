@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-ground text-ink antialiased;
+  }
+  /* Every number in the app is tabular: columns line up, digits don't jitter. */
+  .num {
+    @apply font-mono tabular-nums;
+  }
+  /* Section labels read as instrument markings, not headings. */
+  .eyebrow {
+    @apply text-eyebrow uppercase text-muted;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-ground;
+  }
+  ::selection {
+    @apply bg-accent/30;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-panel border border-line bg-surface;
+  }
+  .field {
+    @apply w-full rounded-md border border-line bg-ground px-3 py-2 text-sm
+           text-ink placeholder:text-muted/60 focus:border-accent;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2
+           text-sm font-medium transition-colors disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-ground hover:bg-accent/90;
+  }
+  .btn-quiet {
+    @apply btn border border-line bg-surface text-ink hover:bg-raised;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

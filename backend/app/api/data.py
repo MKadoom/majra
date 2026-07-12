@@ -280,6 +280,38 @@ def social_metrics(
     )
 
 
+@router.get("/accounts")
+def accounts(
+    platform: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Accounts discovered across the user's connections (drives dashboard
+    filters). One row per ad account / GA4 property / page."""
+    from app.models import Account
+
+    stmt = (
+        select(Account)
+        .join(Connection, Connection.id == Account.connection_id)
+        .where(Connection.user_id == user.id)
+        .order_by(Account.platform, Account.name)
+    )
+    if platform:
+        stmt = stmt.where(Account.platform == platform)
+    return [
+        {
+            "id": a.id,
+            "connection_id": a.connection_id,
+            "platform": a.platform,
+            "external_id": a.external_id,
+            "name": a.name,
+            "currency": a.currency,
+            "timezone": a.timezone,
+        }
+        for a in db.scalars(stmt)
+    ]
+
+
 @router.get("/gtm-resources")
 def gtm_resources(
     account_id: int | None = None,

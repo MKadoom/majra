@@ -191,8 +191,15 @@ Derived metrics are null when their denominator is zero.
   test schema (created via `create_all`) and the migrated schema cannot drift.
   Later migrations are normal Alembic operations.
 
+## §7b Dashboard (Phase 6)
+Next.js app in `frontend/`. It talks to the backend only through its own
+server-side proxy (`/api/proxy/*`), which holds the access + refresh tokens in
+httpOnly cookies and refreshes them transparently — so no token is ever exposed
+to client-side JavaScript and the backend requires no CORS. `GET /accounts` was
+added to the API for the dashboard's filters and account display.
+
 ## §8 Status
-Built and tested (32 passing tests): auth, token encryption, the connector SDK,
+Built and tested (32 backend tests passing; the dashboard builds clean): auth, token encryption, the connector SDK,
 and all seven connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads,
 Facebook Pages + Instagram, GTM** — the idempotent sync engine (four dataset
 shapes: ad, web, social, config, with ad-level parent derivation), dataset-aware
