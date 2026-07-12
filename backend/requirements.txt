@@ -14,6 +14,12 @@ cryptography==46.0.6
 bcrypt==5.0.0
 pyjwt==2.7.0
 structlog==26.1.0
+openpyxl==3.1.5          # xlsx export
+
+# ---- optional ----
+# Parquet export. Big (~100MB) and tied to a numpy ABI, so it is NOT installed
+# by default — /exports?format=parquet returns a clear error without it.
+#   pip install pyarrow
 
 # ---- dev / test ----
 pytest==9.1.1

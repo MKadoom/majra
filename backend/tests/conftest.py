@@ -1,5 +1,12 @@
 import os
 
+# pyarrow must load before the other native extensions or its C module can
+# clash with them at import time (segfault). Harmless if it is not installed.
+try:  # pragma: no cover
+    import pyarrow  # noqa: F401
+except ImportError:
+    pass
+
 from cryptography.fernet import Fernet
 
 # Must be set BEFORE any app import (settings is read at import time).

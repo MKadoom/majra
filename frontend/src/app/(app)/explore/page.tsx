@@ -20,11 +20,12 @@ import {
   DATASET_MEASURES,
   Dataset,
   api,
+  exportUrl,
   platformColor,
   platformLabel,
   qs,
 } from "@/lib/api";
-import { daysAgo, downloadCsv, formatMeasure, isoDate, label } from "@/lib/format";
+import { daysAgo, formatMeasure, isoDate, label } from "@/lib/format";
 import type { GtmSnapshot, MetricPage, MetricRow } from "@/lib/types";
 
 const DATASETS: { key: Dataset; label: string; note: string }[] = [
@@ -299,13 +300,28 @@ export default function ExplorePage() {
           <Panel
             title="Breakdown"
             action={
-              table.length > 0 && (
-                <button
-                  className="text-sm text-muted hover:text-ink"
-                  onClick={() => downloadCsv(table, `majra-${dataset}-${from}_${to}.csv`)}
-                >
-                  Download CSV
-                </button>
+              groupBy.length > 0 && (
+                <span className="flex items-center gap-3 text-sm">
+                  <span className="eyebrow">Download</span>
+                  {(["csv", "xlsx", "json"] as const).map((fmt) => (
+                    <a
+                      key={fmt}
+                      className="text-muted hover:text-ink"
+                      href={exportUrl({
+                        dataset,
+                        date_from: from,
+                        date_to: to,
+                        format: fmt,
+                        group_by: groupBy,
+                        ...(dataset === "ads" && platforms.length
+                          ? { platform: platforms }
+                          : {}),
+                      })}
+                    >
+                      {fmt.toUpperCase()}
+                    </a>
+                  ))}
+                </span>
               )
             }
           >

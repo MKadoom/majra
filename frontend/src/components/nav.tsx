@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/explore", label: "Explore" },
   { href: "/connections", label: "Connections" },
   { href: "/jobs", label: "Sync jobs" },
+  { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Settings" },
 ];
 

@@ -2,7 +2,15 @@ import structlog
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.api import auth, data, platform
+# Parquet export is optional (see requirements.txt). When pyarrow IS installed it
+# must load before the other native extensions — importing it lazily inside a
+# request can clash with an already-loaded numpy and take the worker down.
+try:  # pragma: no cover
+    import pyarrow  # noqa: F401
+except ImportError:
+    pass
+
+from app.api import auth, data, keys, platform, reports
 from app.core.config import settings
 from app.core.db import engine
 
@@ -18,6 +26,8 @@ app = FastAPI(title="majra", version="0.1.0")
 app.include_router(auth.router)
 app.include_router(platform.router)
 app.include_router(data.router)
+app.include_router(keys.router)
+app.include_router(reports.router)
 
 
 @app.get("/health", tags=["ops"])

@@ -5,6 +5,7 @@ from celery import Celery, Task
 from app.connectors.base import TransientError
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.services.reports import run_due_reports
 from app.services.schedules import tick_schedules
 from app.services.sync import run_sync
 
@@ -18,7 +19,13 @@ celery_app.conf.update(
         "tick-schedules": {
             "task": "app.workers.tasks.tick_schedules_task",
             "schedule": 300.0,
-        }
+        },
+        # Saved reports fire on the hour they're set to; checking every 10
+        # minutes is enough to catch the window without hammering the DB.
+        "run-saved-reports": {
+            "task": "app.workers.tasks.run_reports_task",
+            "schedule": 600.0,
+        },
     },
     timezone="UTC",
 )
@@ -71,5 +78,14 @@ def tick_schedules_task() -> int:
         for jid in job_ids:
             run_sync_task.delay(jid)
         return len(job_ids)
+    finally:
+        db.close()
+
+
+@celery_app.task
+def run_reports_task() -> int:
+    db = SessionLocal()
+    try:
+        return len(run_due_reports(db))
     finally:
         db.close()

@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     # Optional alert webhook on final sync failure
     alert_webhook_url: str = ""
 
+    # Exports: a hard cap so a careless query can't exhaust memory.
+    export_max_rows: int = 200_000
+
+    # SMTP, for emailed saved reports. Leave host blank to disable email delivery.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "majra@localhost"
+    smtp_starttls: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

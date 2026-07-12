@@ -78,3 +78,27 @@ export type GtmResource = {
 };
 
 export type GtmSnapshot = { captured_at: string | null; data: GtmResource[] };
+
+export type ApiKey = {
+  id: number;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
+export type SavedReport = {
+  id: number;
+  name: string;
+  dataset: "ads" | "web" | "social";
+  params: Record<string, unknown>;
+  destination: { kind: string; url?: string; to?: string; spreadsheet_id?: string };
+  cadence: string;
+  hour_utc: number;
+  enabled: boolean;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+};

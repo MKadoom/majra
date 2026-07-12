@@ -1,0 +1,386 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+
+import { Empty, ErrorNote, Panel, Spinner, Status } from "@/components/ui";
+import { api } from "@/lib/api";
+import { timeAgo } from "@/lib/format";
+import type { SavedReport } from "@/lib/types";
+
+type Kind = "google_sheets" | "webhook" | "email";
+
+const KIND_LABEL: Record<string, string> = {
+  google_sheets: "Google Sheet",
+  webhook: "Webhook",
+  email: "Email",
+};
+
+export default function ReportsPage() {
+  const [reports, setReports] = useState<SavedReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setReports(await api.get<SavedReport[]>("/reports"));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load your reports.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function runNow(id: number) {
+    try {
+      await api.post(`/reports/${id}/run`, {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That report didn't deliver.");
+    }
+    await load();
+  }
+
+  if (loading) return <Spinner label="Loading reports" />;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Reports</h1>
+          <p className="mt-0.5 text-sm text-muted">
+            A query that runs on a schedule and delivers itself — to a Google
+            Sheet, a webhook, or your inbox.
+          </p>
+        </div>
+        <button className="btn-primary" onClick={() => setAdding((v) => !v)}>
+          {adding ? "Close" : "New report"}
+        </button>
+      </header>
+
+      {error && <ErrorNote message={error} />}
+
+      {adding && (
+        <NewReport
+          onDone={() => {
+            setAdding(false);
+            void load();
+          }}
+        />
+      )}
+
+      {reports.length === 0 ? (
+        <Panel>
+          <Empty
+            title="No reports yet."
+            hint="Set one up and yesterday's numbers will be waiting for you each morning."
+          />
+        </Panel>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {reports.map((r) => (
+            <article key={r.id} className="panel p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="flex items-center gap-2 font-medium">
+                    {r.name}
+                    {r.last_status && <Status value={r.last_status} />}
+                    {!r.enabled && <Status value="pending" />}
+                  </h3>
+                  <p className="mt-1 text-sm text-muted">
+                    {r.dataset} · last {String(r.params.last_days ?? 30)} days ·{" "}
+                    {r.cadence} at {String(r.hour_utc).padStart(2, "0")}:00 UTC →{" "}
+                    {KIND_LABEL[r.destination.kind] ?? r.destination.kind}
+                  </p>
+                  {r.last_error && (
+                    <p className="mt-1 text-sm text-bad">{r.last_error}</p>
+                  )}
+                </div>
+                <span className="text-sm text-muted">
+                  {r.last_run_at ? `ran ${timeAgo(r.last_run_at)}` : "never run"}
+                </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+                <button className="btn-quiet" onClick={() => runNow(r.id)}>
+                  Run now
+                </button>
+                <button
+                  className="btn-quiet"
+                  onClick={async () => {
+                    await api.patch(`/reports/${r.id}?enabled=${!r.enabled}`);
+                    await load();
+                  }}
+                >
+                  {r.enabled ? "Pause" : "Resume"}
+                </button>
+                <button
+                  className="btn-quiet ms-auto text-muted"
+                  onClick={async () => {
+                    await api.del(`/reports/${r.id}`);
+                    await load();
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewReport({ onDone }: { onDone: () => void }) {
+  const [name, setName] = useState("");
+  const [dataset, setDataset] = useState<"ads" | "web" | "social">("ads");
+  const [lastDays, setLastDays] = useState(30);
+  const [hour, setHour] = useState(6);
+  const [kind, setKind] = useState<Kind>("google_sheets");
+
+  const [sheetId, setSheetId] = useState("");
+  const [sheetName, setSheetName] = useState("majra");
+  const [saJson, setSaJson] = useState("");
+  const [url, setUrl] = useState("");
+  const [secret, setSecret] = useState("");
+  const [to, setTo] = useState("");
+
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      let destination: Record<string, unknown>;
+      if (kind === "google_sheets") {
+        destination = {
+          kind,
+          spreadsheet_id: sheetId,
+          sheet_name: sheetName || "majra",
+          service_account: JSON.parse(saJson),
+        };
+      } else if (kind === "webhook") {
+        destination = { kind, url, secret: secret || undefined };
+      } else {
+        destination = { kind, to };
+      }
+
+      await api.post("/reports", {
+        name,
+        dataset,
+        params: { last_days: lastDays, group_by: [dataset === "ads" ? "platform" : "date"] },
+        destination,
+        cadence: "daily",
+        hour_utc: hour,
+      });
+      onDone();
+    } catch (err) {
+      if (err instanceof SyntaxError)
+        setError("That service-account JSON isn't valid. Paste the whole key file.");
+      else setError(err instanceof Error ? err.message : "Could not save that report.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="New report">
+      <form onSubmit={save} className="flex flex-col gap-4">
+        {error && <ErrorNote message={error} />}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="rname" className="eyebrow mb-1.5 block">
+              Name
+            </label>
+            <input
+              id="rname"
+              required
+              className="field"
+              placeholder="Daily spend by platform"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="rdataset" className="eyebrow mb-1.5 block">
+              Data
+            </label>
+            <select
+              id="rdataset"
+              className="field"
+              value={dataset}
+              onChange={(e) => setDataset(e.target.value as typeof dataset)}
+            >
+              <option value="ads">Ads</option>
+              <option value="web">Web (GA4)</option>
+              <option value="social">Social</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="rdays" className="eyebrow mb-1.5 block">
+              Rolling window (days)
+            </label>
+            <input
+              id="rdays"
+              type="number"
+              min={1}
+              max={365}
+              className="field"
+              value={lastDays}
+              onChange={(e) => setLastDays(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label htmlFor="rhour" className="eyebrow mb-1.5 block">
+              Send daily at (UTC)
+            </label>
+            <input
+              id="rhour"
+              type="number"
+              min={0}
+              max={23}
+              className="field"
+              value={hour}
+              onChange={(e) => setHour(Number(e.target.value))}
+            />
+          </div>
+        </div>
+
+        <div>
+          <span className="eyebrow mb-1.5 block">Deliver to</span>
+          <div className="flex flex-wrap gap-1.5">
+            {(["google_sheets", "webhook", "email"] as Kind[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                aria-pressed={kind === k}
+                className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                  kind === k
+                    ? "border-accent bg-accent/10 text-ink"
+                    : "border-line bg-surface text-muted hover:text-ink"
+                }`}
+              >
+                {KIND_LABEL[k]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {kind === "google_sheets" && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted">
+              Share the sheet with your service account&apos;s email, giving it Editor
+              access. majra clears the tab and rewrites it on every run.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="sid" className="eyebrow mb-1.5 block">
+                  Spreadsheet ID
+                </label>
+                <input
+                  id="sid"
+                  required
+                  className="field"
+                  placeholder="1AbC…"
+                  value={sheetId}
+                  onChange={(e) => setSheetId(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="sname" className="eyebrow mb-1.5 block">
+                  Tab name
+                </label>
+                <input
+                  id="sname"
+                  className="field"
+                  value={sheetName}
+                  onChange={(e) => setSheetName(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="sa" className="eyebrow mb-1.5 block">
+                Service account key (JSON)
+              </label>
+              <textarea
+                id="sa"
+                required
+                rows={4}
+                className="field font-mono text-xs"
+                placeholder='{"type": "service_account", …}'
+                value={saJson}
+                onChange={(e) => setSaJson(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+
+        {kind === "webhook" && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="url" className="eyebrow mb-1.5 block">
+                URL
+              </label>
+              <input
+                id="url"
+                required
+                type="url"
+                className="field"
+                placeholder="https://example.com/hooks/majra"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="secret" className="eyebrow mb-1.5 block">
+                Signing secret (optional)
+              </label>
+              <input
+                id="secret"
+                className="field"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+              />
+              <p className="mt-1.5 text-eyebrow text-muted">
+                We&apos;ll sign each payload so you can verify it came from majra.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {kind === "email" && (
+          <div>
+            <label htmlFor="to" className="eyebrow mb-1.5 block">
+              Send to
+            </label>
+            <input
+              id="to"
+              required
+              type="email"
+              className="field"
+              placeholder="you@example.com"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+            <p className="mt-1.5 text-eyebrow text-muted">
+              Needs SMTP configured on the server.
+            </p>
+          </div>
+        )}
+
+        <button className="btn-primary self-start" disabled={busy}>
+          {busy ? "Saving…" : "Save report"}
+        </button>
+      </form>
+    </Panel>
+  );
+}

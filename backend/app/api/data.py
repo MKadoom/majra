@@ -5,8 +5,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from fastapi.responses import Response, StreamingResponse
+
 from app.api.auth import get_current_user
+from app.api.keys import get_read_principal
 from app.connectors.base import BREAKDOWN_SETS
+from app.services import exports
+from app.services.datasets import run_dataset_query
 from app.core.config import settings
 from app.core.db import get_db
 from app.models import Connection, Schedule, SyncJob, SyncLog, User
@@ -204,7 +209,7 @@ def metrics(
     sort: str | None = None,
     page: int = 1,
     page_size: int = Query(100, le=1000),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     if breakdown not in BREAKDOWN_SETS:
@@ -234,7 +239,7 @@ def web_metrics(
     sort: str | None = None,
     page: int = 1,
     page_size: int = Query(100, le=1000),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     """Query GA4 web-analytics facts (sessions/users/conversions/revenue),
@@ -262,7 +267,7 @@ def social_metrics(
     sort: str | None = None,
     page: int = 1,
     page_size: int = Query(100, le=1000),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     """Query Facebook Pages / Instagram organic facts (impressions, reach,
@@ -283,7 +288,7 @@ def social_metrics(
 @router.get("/accounts")
 def accounts(
     platform: str | None = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     """Accounts discovered across the user's connections (drives dashboard
@@ -312,11 +317,67 @@ def accounts(
     ]
 
 
+@router.get(
+    "/exports",
+    tags=["data"],
+    summary="Download a metrics query as CSV, JSON, Excel or Parquet",
+)
+def export(
+    dataset: str,
+    date_from: date,
+    date_to: date,
+    format: str = "csv",
+    breakdown: str = "none",
+    platform: list[str] | None = Query(None),
+    account_id: list[int] | None = Query(None),
+    campaign_id: list[int] | None = Query(None),
+    group_by: list[str] | None = Query(None),
+    sort: str | None = None,
+    user: User = Depends(get_read_principal),
+    db: Session = Depends(get_db),
+):
+    """Same filters as the matching query endpoint, but returns a file instead of
+    a page. `dataset` is `ads`, `web` or `social`. Works with an API key, so a
+    nightly script can pull yesterday's numbers straight into a spreadsheet."""
+    if format not in exports.FORMATS:
+        raise HTTPException(422, f"format must be one of {exports.FORMATS}")
+    rows = run_dataset_query(
+        db,
+        dataset=dataset,
+        date_from=date_from,
+        date_to=date_to,
+        breakdown=breakdown,
+        platforms=platform,
+        account_ids=account_id,
+        campaign_ids=campaign_id,
+        group_by=group_by,
+        sort=sort,
+        limit=exports.cap(),
+    )
+    name = exports.filename(dataset, date_from, date_to, format)
+    headers = {"content-disposition": f'attachment; filename="{name}"'}
+
+    if format == "csv":
+        return StreamingResponse(
+            exports.stream_csv(rows),
+            media_type=exports.MEDIA_TYPE["csv"],
+            headers=headers,
+        )
+    body = {
+        "json": exports.to_json,
+        "xlsx": exports.to_xlsx,
+        "parquet": exports.to_parquet,
+    }[format](rows)
+    return Response(
+        content=body, media_type=exports.MEDIA_TYPE[format], headers=headers
+    )
+
+
 @router.get("/gtm-resources")
 def gtm_resources(
     account_id: int | None = None,
     kind: str | None = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     """Return the latest GTM config snapshot (rows at the most recent

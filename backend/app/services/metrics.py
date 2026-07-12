@@ -63,7 +63,9 @@ def query_metrics(
     page_size: int = 100,
 ) -> dict:
     group_by = [g for g in (group_by or []) if g in GROUPABLE]
-    page_size = max(1, min(page_size, 1000))
+    # The 1000-row cap lives at the HTTP boundary (Query(le=1000)); exports
+    # legitimately ask for far more, so the service itself doesn't clamp.
+    page_size = max(1, page_size)
 
     cols = [GROUPABLE[g] for g in group_by]
     aggs = [expr.label(name) for name, expr in SUMS.items()]

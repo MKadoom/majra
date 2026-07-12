@@ -17,10 +17,10 @@ tested code — not scaffolding.
 | 4 | Google Ads connector (proves the plugin architecture) | ✅ built + tested |
 | 5 | GA4 ✅ · TikTok ✅ · Snapchat ✅ · FB Pages + Instagram ✅ · GTM ✅ | ✅ complete |
 | 6 | Next.js dashboard | ✅ built + builds clean |
-| 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ▢ next |
-| 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ |
+| 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ✅ built + tested |
+| 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ next |
 
-**32 tests pass** covering auth, token encryption, the connector SDK, all seven
+**44 tests pass** covering auth, token encryption, the connector SDK, all seven
 connectors — Meta, Google Ads, GA4, TikTok, Snapchat, Facebook Pages +
 Instagram, and **GTM** — with full end-to-end syncs against mocked platform APIs
 (pagination, OAuth + service-account auth, nested-stats flattening, metric
@@ -63,6 +63,22 @@ Two things worth knowing about how it's built:
 
 The layout is RTL-safe throughout (logical properties only — `border-inline-end`,
 `ms-*`/`me-*`, `text-start`/`text-end`), so an Arabic locale flips it for free.
+
+## Getting the data out
+
+- **Read-only API keys.** Create one in Settings and pull your numbers from a
+  script: `curl -H "Authorization: Bearer mk_…" ".../metrics?date_from=…"`. A key
+  is read-only *by construction*, not by a scope check — write endpoints simply
+  don't accept the key principal, so a leaked key can't start a sync, add a
+  connection, or mint another key.
+- **Exports.** `GET /exports?dataset=ads&format=csv|json|xlsx|parquet` takes the
+  same filters as `/metrics` and streams a file. (Parquet needs `pip install
+  pyarrow`; the other three work out of the box.)
+- **Saved reports.** A query that runs on a schedule and delivers itself — into a
+  **Google Sheet**, to a **webhook** (HMAC-SHA256 signed so you can verify it came
+  from your majra), or to your **inbox** as a CSV attachment. The window rolls:
+  "the last 30 days" stays true every morning instead of freezing on the day you
+  created it.
 
 ## The three things only you can do
 

@@ -86,3 +86,61 @@ class SyncLog(Base):
     level: Mapped[str] = mapped_column(String(10), default="info")
     event: Mapped[str] = mapped_column(String(200))
     data: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class ApiKey(Base):
+    """A read-only key for pulling data from scripts. The secret is shown once
+    at creation and never stored — only its SHA-256 hash. `prefix` is the
+    non-secret head of the key, used to look the row up before hashing."""
+
+    __tablename__ = "api_keys"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app.users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    prefix: Mapped[str] = mapped_column(String(24), unique=True, index=True)
+    key_hash: Mapped[str] = mapped_column(String(64))
+    scopes: Mapped[list] = mapped_column(JSONB, default=lambda: ["read"])
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped["User"] = relationship()
+
+
+class SavedReport(Base):
+    """A metrics query that runs on a schedule and delivers itself somewhere.
+
+    `params` holds the query (dataset, group_by, filters, and a RELATIVE window —
+    `last_days` — because a saved report runs repeatedly and a fixed date range
+    would go stale). `destination` holds the delivery config:
+      {"kind": "google_sheets", "spreadsheet_id": "...", "sheet_name": "majra",
+       "service_account": {...}}
+      {"kind": "webhook", "url": "https://…", "secret": "…"}   (HMAC-SHA256 signed)
+      {"kind": "email", "to": "you@example.com"}               (SMTP from env)
+    """
+
+    __tablename__ = "saved_reports"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app.users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    dataset: Mapped[str] = mapped_column(String(20), default="ads")  # ads|web|social
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    destination: Mapped[dict] = mapped_column(JSONB, default=dict)
+    cadence: Mapped[str] = mapped_column(String(20), default="daily")  # daily|weekly
+    hour_utc: Mapped[int] = mapped_column(Integer, default=6)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    user: Mapped["User"] = relationship()

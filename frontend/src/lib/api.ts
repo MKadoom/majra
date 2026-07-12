@@ -39,7 +39,15 @@ export const api = {
       method: "PATCH",
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
+  del: <T,>(path: string) => request<T>(path, { method: "DELETE" }),
 };
+
+/** Server-side export URL — the browser downloads it straight from the proxy. */
+export function exportUrl(
+  params: Record<string, string | number | boolean | string[] | undefined>,
+) {
+  return `/api/proxy/exports${qs(params)}`;
+}
 
 /** Build a query string, repeating keys for list params (platform, group_by…). */
 export function qs(

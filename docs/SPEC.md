@@ -171,7 +171,10 @@ Derived metrics are null when their denominator is zero.
     sync_jobs(id, connection_id, kind, date_from, date_to, breakdown, status,
               stats JSONB, error, created_at, started_at, finished_at)
     sync_logs(id, sync_job_id, ts, level, event, data JSONB)
-    -- api_keys, saved_reports arrive in Phase 7
+    api_keys(id, user_id, name, prefix UNIQUE, key_hash, scopes JSONB,
+             created_at, last_used_at, revoked_at)
+    saved_reports(id, user_id, name, dataset, params JSONB, destination JSONB,
+                  cadence, hour_utc, enabled, last_run_at, last_status, last_error)
 
 `cadence`: `hourly | every_3h | daily | weekly | manual`.
 `status` on connections: `active | needs_reauth | disabled`.
@@ -191,6 +194,28 @@ Derived metrics are null when their denominator is zero.
   test schema (created via `create_all`) and the migrated schema cannot drift.
   Later migrations are normal Alembic operations.
 
+## §7a API keys, exports, saved reports (Phase 7)
+- **API keys** are `mk_…` bearer tokens. High-entropy random, so a single SHA-256
+  is the right hash (bcrypt would tax every request for no gain). The plaintext is
+  shown once; only `prefix` (non-secret head, indexed) and `key_hash` are stored.
+- **Read-only is structural, not a scope check.** Read endpoints depend on
+  `get_read_principal` (JWT *or* key); every write endpoint depends on
+  `get_current_user` (JWT only). A key therefore cannot sync, connect, or mint
+  another key even if its scopes were tampered with.
+- **Exports**: `GET /exports?dataset=ads|web|social&format=csv|json|xlsx|parquet`,
+  same filters as the matching query endpoint. CSV streams; xlsx/parquet build in
+  memory, hence the `MAJRA_EXPORT_MAX_ROWS` cap. Parquet is an optional extra
+  (pyarrow); without it the endpoint returns a clear error.
+- **Saved reports** store a RELATIVE window (`last_days`), because a scheduled
+  report means "the last 30 days", not a range frozen at creation. Destinations:
+  `google_sheets` (clear tab, then write — so a shorter result leaves no stale
+  rows), `webhook` (HMAC-SHA256 in `X-Majra-Signature`), `email` (CSV attachment
+  over SMTP). Celery beat runs due reports every 10 minutes. Secrets and service
+  accounts are never echoed back by the API.
+- The three query services no longer clamp `page_size` internally — the 1000-row
+  cap lives at the HTTP boundary (`Query(le=1000)`), so exports can legitimately
+  ask for far more without being silently truncated.
+
 ## §7b Dashboard (Phase 6)
 Next.js app in `frontend/`. It talks to the backend only through its own
 server-side proxy (`/api/proxy/*`), which holds the access + refresh tokens in
@@ -199,12 +224,13 @@ to client-side JavaScript and the backend requires no CORS. `GET /accounts` was
 added to the API for the dashboard's filters and account display.
 
 ## §8 Status
-Built and tested (32 backend tests passing; the dashboard builds clean): auth, token encryption, the connector SDK,
+Built and tested (44 backend tests passing; the dashboard builds clean): auth, token encryption, the connector SDK,
 and all seven connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads,
 Facebook Pages + Instagram, GTM** — the idempotent sync engine (four dataset
 shapes: ad, web, social, config, with ad-level parent derivation), dataset-aware
 watermark/backfill, schedule ticking, the metrics / web-metrics / social-metrics
 APIs plus `/gtm-resources`, and a blended cross-platform `/metrics` query. The
-connector layer (Phases 2–5) is complete; every connector after Meta needed no
-`app/core` changes. Not yet built: the dashboard (Phase 6); exports/API
-keys/saved reports (Phase 7); and production hardening/monitoring (Phase 8).
+connector layer (Phases 2–5) is complete, the dashboard (Phase 6) is built, and
+Phase 7 adds read-only API keys, exports (CSV/JSON/xlsx/parquet) and scheduled
+saved reports (Google Sheets / signed webhook / email). Not yet built: production
+hardening and monitoring (Phase 8).

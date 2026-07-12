@@ -1,4 +1,6 @@
+import hashlib
 import json
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -62,3 +64,26 @@ def encrypt_tokens(tokens: dict) -> bytes:
 
 def decrypt_tokens(blob: bytes) -> dict:
     return json.loads(_fernet().decrypt(bytes(blob)))
+
+
+# ---------------------------------------------------------------- API keys
+# A key is high-entropy random, not a password, so a single SHA-256 is the right
+# hash: bcrypt would add ~100ms to every API request for no security gain
+# against a 256-bit secret. The plaintext key is shown once and never stored.
+API_KEY_PREFIX = "mk_"
+_PREFIX_LEN = 8  # non-secret head, used to find the row before hashing
+
+
+def generate_api_key() -> tuple[str, str, str]:
+    """Returns (full_key, prefix, sha256_hash). Only the last two are stored."""
+    body = secrets.token_urlsafe(32)
+    full = f"{API_KEY_PREFIX}{body}"
+    return full, full[: len(API_KEY_PREFIX) + _PREFIX_LEN], hash_api_key(full)
+
+
+def hash_api_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def api_key_prefix(key: str) -> str:
+    return key[: len(API_KEY_PREFIX) + _PREFIX_LEN]
