@@ -6,7 +6,7 @@ check: write endpoints depend on `get_current_user` (JWT only), read endpoints
 depend on `get_read_principal` (JWT *or* key). A key therefore cannot start a
 sync, create a connection, or mint another key, no matter what it claims.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import jwt as pyjwt
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,7 +18,11 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.core.db import get_db
 from app.core.security import (
-    API_KEY_PREFIX, api_key_prefix, decode_token, generate_api_key, hash_api_key,
+    API_KEY_PREFIX,
+    api_key_prefix,
+    decode_token,
+    generate_api_key,
+    hash_api_key,
 )
 from app.models import ApiKey, User
 
@@ -45,14 +49,14 @@ def get_read_principal(
             or key.key_hash != hash_api_key(token)
         ):
             raise HTTPException(401, "invalid or revoked API key")
-        key.last_used_at = datetime.now(timezone.utc)
+        key.last_used_at = datetime.now(UTC)
         db.commit()
         return db.get(User, key.user_id)
 
     try:
         payload = decode_token(token, "access")
-    except pyjwt.PyJWTError:
-        raise HTTPException(401, "invalid or expired token")
+    except pyjwt.PyJWTError as exc:
+        raise HTTPException(401, "invalid or expired token") from exc
     user = db.get(User, int(payload["sub"]))
     if user is None:
         raise HTTPException(401, "user not found")
@@ -112,6 +116,6 @@ def revoke_key(
     key = db.get(ApiKey, key_id)
     if key is None or key.user_id != user.id:
         raise HTTPException(404, "API key not found")
-    key.revoked_at = datetime.now(timezone.utc)
+    key.revoked_at = datetime.now(UTC)
     db.commit()
     return {"id": key.id, "revoked_at": key.revoked_at}

@@ -40,7 +40,7 @@ def mint_access(service_account: dict, scope: str) -> str:
             timeout=60,
         )
     except httpx.HTTPError as exc:
-        raise TransientError(f"service-account token network error {exc}")
+        raise TransientError(f"service-account token network error {exc}") from exc
     data = resp.json()
     if resp.status_code >= 400 or "error" in data:
         detail = data.get("error_description") or data.get("error") or resp.status_code

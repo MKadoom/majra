@@ -15,6 +15,8 @@ bcrypt==5.0.0
 pyjwt==2.7.0
 structlog==26.1.0
 openpyxl==3.1.5          # xlsx export
+slowapi==0.1.10          # rate limiting
+prometheus-client==0.25.0  # /_metrics scrape endpoint
 
 # ---- optional ----
 # Parquet export. Big (~100MB) and tied to a numpy ABI, so it is NOT installed
@@ -24,3 +26,4 @@ openpyxl==3.1.5          # xlsx export
 # ---- dev / test ----
 pytest==9.1.1
 respx==0.23.1
+ruff==0.15.21

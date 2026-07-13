@@ -7,8 +7,8 @@ export is capped at `MAJRA_EXPORT_MAX_ROWS`.
 import csv
 import io
 import json
+from collections.abc import Iterator
 from datetime import date
-from typing import Iterator
 
 from app.core.config import settings
 
@@ -68,10 +68,10 @@ def to_parquet(rows: list[dict]) -> bytes:
     try:
         import pyarrow as pa
         import pyarrow.parquet as pq
-    except ImportError:  # pragma: no cover - optional dependency
+    except ImportError as exc:  # pragma: no cover - optional dependency
         raise RuntimeError(
             "Parquet export needs pyarrow. Install it, or export CSV instead."
-        )
+        ) from exc
 
     cols = _columns(rows)
     table = pa.table({c: [row.get(c) for row in rows] for c in cols} if cols else {})

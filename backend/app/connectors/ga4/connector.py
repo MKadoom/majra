@@ -12,13 +12,18 @@ Uses httpx + pyjwt (RS256) so the flow is mockable with respx like every other
 connector, and needs no extra dependency.
 """
 import time
+from collections.abc import Iterator
 from datetime import date
-from typing import Iterator
 
 import httpx
 
 from app.connectors.base import (
-    AccountInfo, BaseConnector, Level, PermanentError, TokenSet, TransientError,
+    AccountInfo,
+    BaseConnector,
+    Level,
+    PermanentError,
+    TokenSet,
+    TransientError,
 )
 from app.connectors.google_sa import mint_access
 from app.models import RawGA4Report
@@ -102,8 +107,7 @@ class GA4Connector(BaseConnector):
             }
             data = self._request("POST", url, tokens, json=body).json()
             rows = data.get("rows", [])
-            for row in rows:
-                yield row
+            yield from rows
             row_count = int(data.get("rowCount", 0))
             offset += len(rows)
             if not rows or offset >= row_count:

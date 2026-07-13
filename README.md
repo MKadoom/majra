@@ -4,8 +4,9 @@ A self-hosted marketing-data platform — an open-source alternative to Windsor.
 Connect your ad platforms, pull daily metrics into a normalized warehouse, and
 query a single blended `/metrics` API across all of them.
 
-This repository is being built **phase by phase**. What's here is real, running,
-tested code — not scaffolding.
+**All eight phases are complete.** What's here is real, running, tested code —
+not scaffolding. See `docs/INSTALL.md` to go from a bare Ubuntu VPS to a working
+dashboard over HTTPS.
 
 ## Status
 
@@ -18,9 +19,9 @@ tested code — not scaffolding.
 | 5 | GA4 ✅ · TikTok ✅ · Snapchat ✅ · FB Pages + Instagram ✅ · GTM ✅ | ✅ complete |
 | 6 | Next.js dashboard | ✅ built + builds clean |
 | 7 | API keys · CSV/Excel exports · saved reports · Google Sheets | ✅ built + tested |
-| 8 | Hardening · Prometheus/Grafana · CI · production compose | ▢ next |
+| 8 | Hardening · Prometheus/Grafana · CI · production compose | ✅ built + tested |
 
-**44 tests pass** covering auth, token encryption, the connector SDK, all seven
+**52 tests pass** covering auth, token encryption, the connector SDK, all seven
 connectors — Meta, Google Ads, GA4, TikTok, Snapchat, Facebook Pages +
 Instagram, and **GTM** — with full end-to-end syncs against mocked platform APIs
 (pagination, OAuth + service-account auth, nested-stats flattening, metric
@@ -79,6 +80,38 @@ The layout is RTL-safe throughout (logical properties only — `border-inline-en
   from your majra), or to your **inbox** as a CSV attachment. The window rolls:
   "the last 30 days" stays true every morning instead of freezing on the day you
   created it.
+
+## See it working first
+
+You don't need a single developer account to look at the whole thing:
+
+```bash
+make up
+docker compose -f infra/docker-compose.yml exec backend python scripts/seed_demo.py
+# then sign in at http://localhost:3000 as demo@majra.dev / demo-password
+```
+
+That seeds 60 days of plausible blended data across four ad platforms, GA4 and
+social. TikTok is missing two days **on purpose** — look at the channel strips on
+the Connections page and you'll see the gap. That's what a broken connector looks
+like, so you'll recognize it when it's real.
+
+## Running it for real
+
+`docs/INSTALL.md` takes a bare Ubuntu 24.04 server to HTTPS in eight steps: Caddy
+gets certificates automatically, Postgres/Redis/the API have **no published
+ports** (the dashboard reaches the API over the internal network), migrations run
+on boot, and a nightly `pg_dump` rotates on 14 days.
+
+`docs/OPERATIONS.md` is the runbook — restore-testing, key rotation, what to do
+when a platform revokes a token, and why yesterday's conversions changed
+overnight. `docs/CONNECTOR_SDK.md` is how to add a platform in a day.
+
+Hardening: per-IP/per-key rate limits (Redis-backed when you run more than one
+worker — an in-process limit with 4 workers lets 4× the traffic through), security
+headers, CORS closed by default, and Prometheus at **`/_metrics`** — *not*
+`/metrics`, which is the ad-performance query API. A Grafana dashboard is
+provisioned.
 
 ## The three things only you can do
 

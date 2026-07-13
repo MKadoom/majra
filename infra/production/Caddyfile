@@ -1,0 +1,22 @@
+# Caddy terminates TLS and gets certificates automatically from Let's Encrypt.
+# Set MAJRA_DOMAIN and MAJRA_ACME_EMAIL in .env before starting.
+{
+	email {$MAJRA_ACME_EMAIL}
+}
+
+{$MAJRA_DOMAIN} {
+	encode zstd gzip
+
+	# The dashboard is the front door. It proxies its own API calls server-side
+	# (/api/proxy/*), so the backend is NOT exposed publicly at all — it has no
+	# published port and is reachable only on the internal compose network.
+	reverse_proxy frontend:3000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}

@@ -1,0 +1,117 @@
+{
+  "title": "majra — pipeline health",
+  "uid": "majra-pipeline",
+  "tags": ["majra"],
+  "timezone": "utc",
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Syncs failed (24h)",
+      "description": "The number that matters. If this is not zero, a tributary is broken and tomorrow's numbers will have a hole in them.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(majra_sync_total{status=\"failed\"}[24h]))",
+          "legendFormat": "failed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Rows ingested (24h)",
+      "description": "If this flatlines while syncs still report success, a platform is returning empty results — check the connection's auth.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(majra_sync_rows_total[24h]))",
+          "legendFormat": "rows"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "API p95 latency",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(majra_http_request_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "stat",
+      "title": "Reports delivered (24h)",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(majra_report_total{status=\"success\"}[24h]))",
+          "legendFormat": "delivered"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sync outcomes by platform",
+      "description": "One line per platform. A platform going flat is the same signal as a gap in its channel strip on the Connections page.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "targets": [
+        {
+          "expr": "sum by (platform, status) (increase(majra_sync_total[1h]))",
+          "legendFormat": "{{platform}} · {{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sync duration (p95) by platform",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, platform) (rate(majra_sync_seconds_bucket[30m])))",
+          "legendFormat": "{{platform}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows written per hour",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "sum by (platform) (increase(majra_sync_rows_total[1h]))",
+          "legendFormat": "{{platform}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP requests by status",
+      "description": "A rise in 429s means the rate limiter is doing its job; a rise in 5xx means it isn't.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(majra_http_requests_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

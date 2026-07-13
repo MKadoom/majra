@@ -117,5 +117,5 @@ def run_now(
     try:
         result = run_report(db, r)
     except Exception as exc:
-        raise HTTPException(502, f"delivery failed: {exc}")
+        raise HTTPException(502, f"delivery failed: {exc}") from exc
     return {"id": r.id, **result}

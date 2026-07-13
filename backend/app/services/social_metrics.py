@@ -9,7 +9,8 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Account, FactSocialPerformance as S
+from app.models import Account
+from app.models import FactSocialPerformance as S
 
 GROUPABLE = {
     "date": S.date.label("date"),

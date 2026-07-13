@@ -224,7 +224,7 @@ to client-side JavaScript and the backend requires no CORS. `GET /accounts` was
 added to the API for the dashboard's filters and account display.
 
 ## §8 Status
-Built and tested (44 backend tests passing; the dashboard builds clean): auth, token encryption, the connector SDK,
+Built and tested (52 backend tests passing; the dashboard builds clean): auth, token encryption, the connector SDK,
 and all seven connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads,
 Facebook Pages + Instagram, GTM** — the idempotent sync engine (four dataset
 shapes: ad, web, social, config, with ad-level parent derivation), dataset-aware
@@ -232,5 +232,9 @@ watermark/backfill, schedule ticking, the metrics / web-metrics / social-metrics
 APIs plus `/gtm-resources`, and a blended cross-platform `/metrics` query. The
 connector layer (Phases 2–5) is complete, the dashboard (Phase 6) is built, and
 Phase 7 adds read-only API keys, exports (CSV/JSON/xlsx/parquet) and scheduled
-saved reports (Google Sheets / signed webhook / email). Not yet built: production
-hardening and monitoring (Phase 8).
+saved reports (Google Sheets / signed webhook / email). Phase 8 adds hardening
+(rate limiting keyed per API key or IP, security headers, CORS closed by default),
+Prometheus at `/_metrics` with a provisioned Grafana dashboard, CI, a production
+compose with Caddy TLS and nightly backups, and the install/operations/SDK docs.
+
+**All eight phases are complete.**

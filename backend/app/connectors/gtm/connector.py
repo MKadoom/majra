@@ -8,13 +8,17 @@ is no date range and no delete+insert.
 """
 import random
 import time
-from datetime import date
-from typing import Iterator
+from collections.abc import Iterator
 
 import httpx
 
 from app.connectors.base import (
-    AccountInfo, BaseConnector, Level, PermanentError, TokenSet, TransientError,
+    AccountInfo,
+    BaseConnector,
+    Level,
+    PermanentError,
+    TokenSet,
+    TransientError,
 )
 from app.connectors.google_sa import mint_access
 from app.models import RawGtmSnapshot

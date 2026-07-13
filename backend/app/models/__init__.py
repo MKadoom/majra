@@ -1,10 +1,27 @@
 from app.models.app_models import (
-    ApiKey, Connection, SavedReport, Schedule, SyncJob, SyncLog, User,
+    ApiKey,
+    Connection,
+    SavedReport,
+    Schedule,
+    SyncJob,
+    SyncLog,
+    User,
 )
 from app.models.norm_models import (
-    Account, Ad, Adset, Campaign, FactAdPerformance, FactSocialPerformance,
-    FactWebPerformance, GtmResource, RawGA4Report, RawGoogleInsights,
-    RawGtmSnapshot, RawMetaInsights, RawMetaSocial, RawSnapchatStats,
+    Account,
+    Ad,
+    Adset,
+    Campaign,
+    FactAdPerformance,
+    FactSocialPerformance,
+    FactWebPerformance,
+    GtmResource,
+    RawGA4Report,
+    RawGoogleInsights,
+    RawGtmSnapshot,
+    RawMetaInsights,
+    RawMetaSocial,
+    RawSnapchatStats,
     RawTikTokReport,
 )
 

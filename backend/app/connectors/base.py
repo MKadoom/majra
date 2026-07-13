@@ -5,9 +5,10 @@ Connectors raise only TransientError (retryable) or PermanentError. Nothing else
 escapes a connector. Normalization functions are pure and fixture-testable.
 """
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import ClassVar, Iterator, Literal
+from typing import ClassVar, Literal
 
 Level = Literal["campaign", "adset", "ad"]
 
@@ -132,8 +133,8 @@ class BaseConnector(ABC):
 def get_connector(platform: str) -> BaseConnector:
     try:
         return CONNECTORS[platform]()
-    except KeyError:
-        raise PermanentError(f"unknown platform: {platform}")
+    except KeyError as exc:
+        raise PermanentError(f"unknown platform: {platform}") from exc
 
 
 def utcnow_iso() -> str:

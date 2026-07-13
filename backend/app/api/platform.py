@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import jwt as pyjwt
 from fastapi import APIRouter, Depends, HTTPException
@@ -60,8 +60,8 @@ def callback(
         raise HTTPException(400, "missing authorization code")
     try:
         payload = decode_token(state, "oauth_state")
-    except pyjwt.PyJWTError:
-        raise HTTPException(400, "invalid or expired state")
+    except pyjwt.PyJWTError as exc:
+        raise HTTPException(400, "invalid or expired state") from exc
     if payload.get("platform") != platform:
         raise HTTPException(400, "state/platform mismatch")
 
@@ -69,12 +69,12 @@ def callback(
     try:
         tokens = connector.exchange_code(auth, _redirect_uri(platform))
     except PermanentError as exc:
-        raise HTTPException(400, str(exc))
+        raise HTTPException(400, str(exc)) from exc
 
     conn = Connection(
         user_id=int(payload["sub"]),
         platform=platform,
-        name=f"{platform} · {datetime.now(timezone.utc):%Y-%m-%d %H:%M}",
+        name=f"{platform} · {datetime.now(UTC):%Y-%m-%d %H:%M}",
         encrypted_tokens=encrypt_tokens(tokens.to_dict()),
     )
     db.add(conn)
@@ -134,7 +134,7 @@ def create_service_account_connection(
             {"service_account": body.service_account, "property_id": body.property_id}
         )
     except PermanentError as exc:
-        raise HTTPException(422, str(exc))
+        raise HTTPException(422, str(exc)) from exc
 
     label = body.name or (
         f"{body.platform} · property {body.property_id}" if body.property_id

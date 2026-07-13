@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: majra
+    # NOTE: /_metrics, not /metrics. /metrics is majra's ad-performance query
+    # API — scraping it would return JSON and give you nothing.
+    metrics_path: /_metrics
+    static_configs:
+      - targets: ["backend:8000"]

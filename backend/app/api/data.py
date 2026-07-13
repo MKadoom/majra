@@ -1,20 +1,19 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from fastapi.responses import Response, StreamingResponse
-
 from app.api.auth import get_current_user
 from app.api.keys import get_read_principal
 from app.connectors.base import BREAKDOWN_SETS
-from app.services import exports
-from app.services.datasets import run_dataset_query
 from app.core.config import settings
 from app.core.db import get_db
 from app.models import Connection, Schedule, SyncJob, SyncLog, User
+from app.services import exports
+from app.services.datasets import run_dataset_query
 from app.services.metrics import query_metrics
 from app.services.social_metrics import query_social_metrics
 from app.services.web_metrics import query_web_metrics

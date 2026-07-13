@@ -1,19 +1,25 @@
 import jwt as pyjwt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.db import get_db
+from app.core.limiter import limiter
 from app.core.security import (
-    create_access_token, create_refresh_token, decode_token,
-    hash_password, verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    verify_password,
 )
 from app.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 bearer = HTTPBearer(auto_error=False)
+
 
 
 class Credentials(BaseModel):
@@ -42,8 +48,8 @@ def get_current_user(
         raise HTTPException(401, "missing bearer token")
     try:
         payload = decode_token(creds.credentials, "access")
-    except pyjwt.PyJWTError:
-        raise HTTPException(401, "invalid or expired token")
+    except pyjwt.PyJWTError as exc:
+        raise HTTPException(401, "invalid or expired token") from exc
     user = db.get(User, int(payload["sub"]))
     if user is None:
         raise HTTPException(401, "user not found")
@@ -51,7 +57,8 @@ def get_current_user(
 
 
 @router.post("/register", response_model=TokenPair, status_code=201)
-def register(body: Credentials, db: Session = Depends(get_db)):
+@limiter.limit(settings.rate_limit_auth)
+def register(request: Request, body: Credentials, db: Session = Depends(get_db)):
     if db.scalar(select(User).where(User.email == body.email.lower())):
         raise HTTPException(409, "email already registered")
     if len(body.password) < 8:
@@ -63,7 +70,8 @@ def register(body: Credentials, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenPair)
-def login(body: Credentials, db: Session = Depends(get_db)):
+@limiter.limit(settings.rate_limit_auth)
+def login(request: Request, body: Credentials, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "invalid email or password")
@@ -75,11 +83,12 @@ class RefreshBody(BaseModel):
 
 
 @router.post("/refresh", response_model=TokenPair)
-def refresh(body: RefreshBody, db: Session = Depends(get_db)):
+@limiter.limit(settings.rate_limit_auth)
+def refresh(request: Request, body: RefreshBody, db: Session = Depends(get_db)):
     try:
         payload = decode_token(body.refresh_token, "refresh")
-    except pyjwt.PyJWTError:
-        raise HTTPException(401, "invalid refresh token")
+    except pyjwt.PyJWTError as exc:
+        raise HTTPException(401, "invalid refresh token") from exc
     user = db.get(User, int(payload["sub"]))
     if user is None:
         raise HTTPException(401, "user not found")

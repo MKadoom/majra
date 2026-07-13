@@ -12,14 +12,19 @@ one measured, so the row date is end_time − 1 day.
 """
 import random
 import time
-from datetime import date, datetime, timedelta, timezone
-from typing import Iterator
+from collections.abc import Iterator
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
 
 from app.connectors.base import (
-    AccountInfo, BaseConnector, Level, PermanentError, TokenSet, TransientError,
+    AccountInfo,
+    BaseConnector,
+    Level,
+    PermanentError,
+    TokenSet,
+    TransientError,
 )
 from app.core.config import settings
 from app.models import RawMetaSocial
@@ -82,8 +87,8 @@ class MetaSocialConnector(BaseConnector):
     def refresh(self, tokens: TokenSet) -> TokenSet:
         try:
             return self._to_long_lived(tokens.access_token)
-        except (TransientError, PermanentError):
-            raise PermanentError("meta_social: token expired — re-authenticate")
+        except (TransientError, PermanentError) as exc:
+            raise PermanentError("meta_social: token expired — re-authenticate") from exc
 
     def _to_long_lived(self, short_token: str) -> TokenSet:
         data = self._get(
@@ -98,7 +103,7 @@ class MetaSocialConnector(BaseConnector):
         expires = None
         if data.get("expires_in"):
             expires = (
-                datetime.now(timezone.utc) + timedelta(seconds=int(data["expires_in"]))
+                datetime.now(UTC) + timedelta(seconds=int(data["expires_in"]))
             ).isoformat()
         return TokenSet(access_token=data["access_token"], expires_at=expires)
 
@@ -137,9 +142,9 @@ class MetaSocialConnector(BaseConnector):
         page_token = TokenSet(access_token=self._page_tokens.get(page_id, tokens.access_token))
         # Graph day-period `until` is exclusive of the last day's row; pad by 2.
         since = int(datetime(date_from.year, date_from.month, date_from.day,
-                             tzinfo=timezone.utc).timestamp())
+                             tzinfo=UTC).timestamp())
         until = int((datetime(date_to.year, date_to.month, date_to.day,
-                              tzinfo=timezone.utc) + timedelta(days=2)).timestamp())
+                              tzinfo=UTC) + timedelta(days=2)).timestamp())
 
         # Page-level insights
         page_data = self._get(

@@ -9,14 +9,19 @@ campaign/ad-squad are derived from the entity hierarchy by the engine.
 """
 import random
 import time
-from datetime import date, datetime, timedelta, timezone
-from typing import Iterator
+from collections.abc import Iterator
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
 
 from app.connectors.base import (
-    AccountInfo, BaseConnector, Level, PermanentError, TokenSet, TransientError,
+    AccountInfo,
+    BaseConnector,
+    Level,
+    PermanentError,
+    TokenSet,
+    TransientError,
 )
 from app.connectors.snapchat.config import SnapchatSettings
 from app.models import RawSnapchatStats
@@ -255,7 +260,7 @@ class SnapchatConnector(BaseConnector):
         try:
             resp = httpx.post(TOKEN, data=form, timeout=60)
         except httpx.HTTPError as exc:
-            raise TransientError(f"snapchat: oauth network error {exc}")
+            raise TransientError(f"snapchat: oauth network error {exc}") from exc
         data = resp.json()
         if resp.status_code >= 400 or "access_token" not in data:
             detail = data.get("error_description") or data.get("error") or resp.status_code
@@ -267,7 +272,7 @@ class SnapchatConnector(BaseConnector):
         if not data.get("expires_in"):
             return None
         return (
-            datetime.now(timezone.utc) + timedelta(seconds=int(data["expires_in"]))
+            datetime.now(UTC) + timedelta(seconds=int(data["expires_in"]))
         ).isoformat()
 
     @staticmethod

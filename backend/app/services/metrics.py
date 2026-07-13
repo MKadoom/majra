@@ -10,7 +10,8 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Account, Ad, Adset, Campaign, FactAdPerformance as F
+from app.models import Account, Ad, Adset, Campaign
+from app.models import FactAdPerformance as F
 
 GROUPABLE = {
     "platform": F.platform.label("platform"),

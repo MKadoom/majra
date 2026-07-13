@@ -9,14 +9,19 @@ list-valued query params are JSON strings; the ad-level report carries only
 import json
 import random
 import time
+from collections.abc import Iterator
 from datetime import date
-from typing import Iterator
 from urllib.parse import urlencode
 
 import httpx
 
 from app.connectors.base import (
-    AccountInfo, BaseConnector, Level, PermanentError, TokenSet, TransientError,
+    AccountInfo,
+    BaseConnector,
+    Level,
+    PermanentError,
+    TokenSet,
+    TransientError,
 )
 from app.connectors.tiktok.config import TikTokSettings
 from app.models import RawTikTokReport
@@ -198,7 +203,7 @@ class TikTokConnector(BaseConnector):
             except httpx.HTTPError as exc:
                 self._backoff(attempt)
                 if attempt == 4:
-                    raise TransientError(f"tiktok: network error {exc}")
+                    raise TransientError(f"tiktok: network error {exc}") from exc
                 continue
             return self._check(resp)
         raise TransientError("tiktok: retries exhausted")

@@ -1,0 +1,172 @@
+name: majra
+
+# Production stack. Differences from infra/docker-compose.yml (the dev one):
+#   - Caddy terminates TLS and is the ONLY thing with published ports.
+#   - Postgres, Redis and the backend have NO published ports — they are
+#     reachable only on the internal network. The API is not on the public
+#     internet at all; the dashboard proxies to it server-side.
+#   - No source mounts, no --reload.
+#   - Everything restarts unless you stop it.
+#   - Nightly pg_dump with 14-day rotation.
+#
+#   docker compose -f infra/production/compose.prod.yml --env-file .env up -d
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      MAJRA_DOMAIN: ${MAJRA_DOMAIN}
+      MAJRA_ACME_EMAIL: ${MAJRA_ACME_EMAIL}
+    depends_on:
+      - frontend
+
+  frontend:
+    build: ../../frontend
+    restart: unless-stopped
+    environment:
+      MAJRA_API_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build: ../../backend
+    restart: unless-stopped
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
+    env_file: ../../.env
+    environment:
+      MAJRA_ENVIRONMENT: production
+      MAJRA_DATABASE_URL: postgresql+psycopg://${MAJRA_PG_USER}:${MAJRA_PG_PASSWORD}@postgres:5432/${MAJRA_PG_DB}
+      MAJRA_REDIS_URL: redis://redis:6379/0
+      # With 4 workers an in-process limit would let 4x the traffic through.
+      MAJRA_RATE_LIMIT_STORAGE: redis://redis:6379/1
+      MAJRA_HSTS_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS localhost:8000/health | grep -q '\"db\":true'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ../../backend
+    restart: unless-stopped
+    command: celery -A app.workers.tasks.celery_app worker --loglevel=info --concurrency=4
+    env_file: ../../.env
+    environment:
+      MAJRA_ENVIRONMENT: production
+      MAJRA_DATABASE_URL: postgresql+psycopg://${MAJRA_PG_USER}:${MAJRA_PG_PASSWORD}@postgres:5432/${MAJRA_PG_DB}
+      MAJRA_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  beat:
+    build: ../../backend
+    restart: unless-stopped
+    command: celery -A app.workers.tasks.celery_app beat --loglevel=info
+    env_file: ../../.env
+    environment:
+      MAJRA_ENVIRONMENT: production
+      MAJRA_DATABASE_URL: postgresql+psycopg://${MAJRA_PG_USER}:${MAJRA_PG_PASSWORD}@postgres:5432/${MAJRA_PG_DB}
+      MAJRA_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${MAJRA_PG_USER}
+      POSTGRES_PASSWORD: ${MAJRA_PG_PASSWORD}
+      POSTGRES_DB: ${MAJRA_PG_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MAJRA_PG_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --appendonly no
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # Nightly dump at 03:30 UTC, 14-day rotation. Copy /backups off this machine.
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      MAJRA_PG_USER: ${MAJRA_PG_USER}
+      MAJRA_PG_PASSWORD: ${MAJRA_PG_PASSWORD}
+      MAJRA_PG_DB: ${MAJRA_PG_DB}
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ${MAJRA_BACKUP_DIR:-./backups}:/backups
+    entrypoint: >
+      sh -c "while true; do
+               sleep $$(( ( $$(date -u -d 'tomorrow 03:30' +%s) - $$(date -u +%s) ) % 86400 ));
+               sh /backup.sh || echo 'backup FAILED';
+               sleep 60;
+             done"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- monitoring (optional: `--profile monitoring`) ---
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000" # localhost only — reach it over an SSH tunnel
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${MAJRA_GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:
+  promdata:
+  grafanadata:

@@ -15,7 +15,7 @@ import hashlib
 import hmac
 import json
 import smtplib
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from email.message import EmailMessage
 
 import httpx
@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.connectors.base import PermanentError
 from app.connectors.google_sa import mint_access
 from app.core.config import settings
+from app.core.observability import REPORTS
 from app.models import SavedReport
 from app.services import exports
 from app.services.datasets import run_dataset_query
@@ -61,7 +62,7 @@ def window(params: dict, today: date) -> tuple[date, date]:
 
 
 def run_report(db: Session, report: SavedReport, now: datetime | None = None) -> dict:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     params = report.params or {}
     date_from, date_to = window(params, now.date())
 
@@ -78,15 +79,18 @@ def run_report(db: Session, report: SavedReport, now: datetime | None = None) ->
         limit=exports.cap(),
     )
 
+    kind = (report.destination or {}).get("kind", "unknown")
     try:
         deliver(report, rows, date_from, date_to)
         report.last_status = "success"
         report.last_error = None
+        REPORTS.labels(kind, "success").inc()
     except Exception as exc:
         report.last_status = "failed"
         report.last_error = f"{type(exc).__name__}: {exc}"
         report.last_run_at = now
         db.commit()
+        REPORTS.labels(kind, "failed").inc()
         log.error("report.failed", report_id=report.id, error=str(exc))
         raise
     report.last_run_at = now
@@ -96,7 +100,7 @@ def run_report(db: Session, report: SavedReport, now: datetime | None = None) ->
 
 
 def run_due_reports(db: Session, now: datetime | None = None) -> list[int]:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     done: list[int] = []
     for r in db.scalars(select(SavedReport).where(SavedReport.enabled.is_(True))):
         if not is_due(r, now):

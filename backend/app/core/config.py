@@ -35,6 +35,27 @@ class Settings(BaseSettings):
     # Exports: a hard cap so a careless query can't exhaust memory.
     export_max_rows: int = 200_000
 
+    # --- hardening (Phase 8) ---
+    # Browser origins allowed to call the API directly. EMPTY BY DEFAULT: the
+    # dashboard proxies server-side and needs none. Only add an origin if you're
+    # building a separate browser app against an API key.
+    cors_origins: list[str] = []
+
+    # Rate limits (slowapi syntax). Auth is the one endpoint worth throttling
+    # hard — it's where credential stuffing lands.
+    rate_limit_auth: str = "10/minute"
+    rate_limit_read: str = "120/minute"
+    # "memory://" is per-process. With more than one worker, point this at redis
+    # (e.g. redis://redis:6379/1) so the limit is shared.
+    rate_limit_storage: str = "memory://"
+    rate_limit_enabled: bool = True
+
+    # Prometheus scrape endpoint. NOTE: it is /_metrics, not /metrics — /metrics
+    # is the ad-performance query API.
+    metrics_enabled: bool = True
+    # Send HSTS. Only turn this on when you're actually behind TLS.
+    hsts_enabled: bool = False
+
     # SMTP, for emailed saved reports. Leave host blank to disable email delivery.
     smtp_host: str = ""
     smtp_port: int = 587

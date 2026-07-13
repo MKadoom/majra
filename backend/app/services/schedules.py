@@ -1,14 +1,14 @@
 """Schedule ticking (Phase 3). Beat calls tick_schedules every 5 minutes;
 each due schedule turns into SyncJob rows (one per breakdown set), or into
 month-chunked backfill jobs on first run (SPEC §4)."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.connectors.base import get_connector
 from app.models import Connection, Schedule, SyncJob
 from app.services.sync import backfill_chunks, incremental_range
-from app.connectors.base import get_connector
 
 CADENCE_DELTA = {
     "hourly": timedelta(hours=1),
@@ -33,7 +33,7 @@ def _is_due(s: Schedule, now: datetime) -> bool:
 
 def tick_schedules(db: Session, now: datetime | None = None) -> list[int]:
     """Returns the SyncJob ids created this tick (caller enqueues them)."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     created: list[int] = []
     for s in db.scalars(select(Schedule).where(Schedule.enabled.is_(True))):
         if not _is_due(s, now):

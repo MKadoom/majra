@@ -4,17 +4,27 @@ Write path is delete+insert scoped to (connection's accounts, breakdown, date
 range) in one transaction — re-running any sync is idempotent. Raw pages are
 appended to the raw layer first and are the re-normalization source of truth.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import structlog
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.connectors.base import PermanentError, TokenSet, get_connector
+from app.core.observability import SYNC_ROWS, SYNC_SECONDS, SYNCS
 from app.core.security import decrypt_tokens
 from app.models import (
-    Account, Ad, Adset, Campaign, Connection, FactAdPerformance,
-    FactSocialPerformance, FactWebPerformance, GtmResource, SyncJob, SyncLog,
+    Account,
+    Ad,
+    Adset,
+    Campaign,
+    Connection,
+    FactAdPerformance,
+    FactSocialPerformance,
+    FactWebPerformance,
+    GtmResource,
+    SyncJob,
+    SyncLog,
 )
 
 log = structlog.get_logger()
@@ -365,7 +375,7 @@ def _handle_config_snapshot(db, conn, connector, job, accounts, tokens) -> dict:
     snapshot stamped with one captured_at (audit history) — not delete+insert,
     so re-running deliberately creates a new snapshot."""
     raw_model = connector.raw_model
-    captured = datetime.now(timezone.utc)
+    captured = datetime.now(UTC)
     total = 0
     rows: list[dict] = []
     for acc in accounts:
@@ -408,7 +418,7 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     conn = db.get(Connection, job.connection_id)
 
     job.status = "running"
-    job.started_at = datetime.now(timezone.utc)
+    job.started_at = datetime.now(UTC)
     db.commit()
 
     try:
@@ -425,17 +435,25 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
 
         job.status = "success"
         job.stats = stats
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         _log(db, job, "sync.finished", **stats)
         db.commit()
+
+        SYNCS.labels(conn.platform, "success").inc()
+        SYNC_ROWS.labels(conn.platform).inc(stats.get("rows_inserted", 0))
+        if job.started_at:
+            SYNC_SECONDS.labels(conn.platform).observe(
+                (job.finished_at - job.started_at).total_seconds()
+            )
         return job
     except Exception as exc:
         db.rollback()
         job = db.get(SyncJob, sync_job_id)
         job.status = "failed"
         job.error = f"{type(exc).__name__}: {exc}"
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         db.commit()
+        SYNCS.labels(conn.platform if conn else "unknown", "failed").inc()
         raise
 
 

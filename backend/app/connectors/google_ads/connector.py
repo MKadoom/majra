@@ -9,14 +9,19 @@ Google Ads deprecates API versions roughly yearly; bump API_VERSION when needed.
 """
 import random
 import time
-from datetime import date, datetime, timedelta, timezone
-from typing import Iterator
+from collections.abc import Iterator
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
 
 from app.connectors.base import (
-    AccountInfo, BaseConnector, Level, PermanentError, TokenSet, TransientError,
+    AccountInfo,
+    BaseConnector,
+    Level,
+    PermanentError,
+    TokenSet,
+    TransientError,
 )
 from app.connectors.google_ads.config import GoogleAdsSettings
 from app.models import RawGoogleInsights
@@ -290,7 +295,7 @@ class GoogleAdsConnector(BaseConnector):
         try:
             resp = httpx.post(OAUTH_TOKEN, data=form, timeout=60)
         except httpx.HTTPError as exc:
-            raise TransientError(f"google_ads: oauth network error {exc}")
+            raise TransientError(f"google_ads: oauth network error {exc}") from exc
         data = resp.json()
         if resp.status_code >= 400 or "error" in data:
             detail = data.get("error_description") or data.get("error") or resp.status_code
@@ -338,7 +343,7 @@ class GoogleAdsConnector(BaseConnector):
         if not data.get("expires_in"):
             return None
         return (
-            datetime.now(timezone.utc) + timedelta(seconds=int(data["expires_in"]))
+            datetime.now(UTC) + timedelta(seconds=int(data["expires_in"]))
         ).isoformat()
 
     @staticmethod
