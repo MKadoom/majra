@@ -22,20 +22,16 @@ import {
   api,
   exportUrl,
   platformColor,
-  platformLabel,
   qs,
 } from "@/lib/api";
-import { daysAgo, formatMeasure, isoDate, label } from "@/lib/format";
+import { daysAgo, isoDate } from "@/lib/format";
+import { useLocale } from "@/lib/locale";
 import type { GtmSnapshot, MetricPage, MetricRow } from "@/lib/types";
 
-const DATASETS: { key: Dataset; label: string; note: string }[] = [
-  { key: "ads", label: "Ads", note: "Meta · Google · TikTok · Snapchat" },
-  { key: "web", label: "Web", note: "Google Analytics 4" },
-  { key: "social", label: "Social", note: "Facebook & Instagram" },
-  { key: "tags", label: "Tags", note: "Tag Manager" },
-];
+const DATASETS: Dataset[] = ["ads", "web", "social", "tags"];
 
 export default function ExplorePage() {
+  const { t, m: mLabel, g: gLabel, p: pName, measure, dir } = useLocale();
   const [dataset, setDataset] = useState<Dataset>("ads");
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(daysAgo(1));
@@ -96,11 +92,11 @@ export default function ExplorePage() {
       setSeries(seriesRes.data);
       setTable(tableRes.data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load these numbers.");
+      setError(e instanceof Error ? e.message : t("explore.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [dataset, from, to, platforms, groupBy, measures, timeKey]);
+  }, [dataset, from, to, platforms, groupBy, measures, timeKey, t]);
 
   useEffect(() => {
     void load();
@@ -140,15 +136,13 @@ export default function ExplorePage() {
     <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Explore</h1>
-          <p className="mt-0.5 text-sm text-muted">
-            {DATASETS.find((d) => d.key === dataset)?.note}
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight">{t("explore.title")}</h1>
+          <p className="mt-0.5 text-sm text-muted">{t(`dataset.${dataset}.note`)}</p>
         </div>
         <div className="flex items-end gap-2">
           <div>
             <label htmlFor="from" className="eyebrow mb-1 block">
-              From
+              {t("common.from")}
             </label>
             <input
               id="from"
@@ -161,7 +155,7 @@ export default function ExplorePage() {
           </div>
           <div>
             <label htmlFor="to" className="eyebrow mb-1 block">
-              To
+              {t("common.to")}
             </label>
             <input
               id="to"
@@ -180,20 +174,20 @@ export default function ExplorePage() {
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Dataset">
         {DATASETS.map((d) => (
           <button
-            key={d.key}
+            key={d}
             role="tab"
-            aria-selected={dataset === d.key}
+            aria-selected={dataset === d}
             onClick={() => {
-              setDataset(d.key);
+              setDataset(d);
               setGroupBy([]);
             }}
             className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
-              dataset === d.key
+              dataset === d
                 ? "border-accent bg-accent/10 text-ink"
                 : "border-line bg-surface text-muted hover:text-ink"
             }`}
           >
-            {d.label}
+            {t(`dataset.${d}`)}
           </button>
         ))}
       </div>
@@ -206,7 +200,7 @@ export default function ExplorePage() {
         <>
           {dataset === "ads" && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="eyebrow">Platforms</span>
+              <span className="eyebrow">{t("explore.platforms")}</span>
               {AD_PLATFORMS.map((p) => {
                 const on = platforms.length === 0 || platforms.includes(p);
                 return (
@@ -221,7 +215,7 @@ export default function ExplorePage() {
                     }`}
                   >
                     <PlatformDot platform={p} />
-                    {platformLabel(p)}
+                    {pName(p)}
                   </button>
                 );
               })}
@@ -230,7 +224,7 @@ export default function ExplorePage() {
                   onClick={() => setPlatforms([])}
                   className="text-sm text-muted hover:text-ink"
                 >
-                  Show all
+                  {t("common.showAll")}
                 </button>
               )}
             </div>
@@ -243,33 +237,39 @@ export default function ExplorePage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {measures.slice(0, 8).map((m) => (
                 <div key={m} className="panel p-4">
-                  <p className="eyebrow">{label(m)}</p>
+                  <p className="eyebrow">{mLabel(m)}</p>
                   <p className="num mt-1.5 text-xl">
-                    {totals ? formatMeasure(m, totals[m]) : "—"}
+                    {totals ? measure(m, totals[m]) : "—"}
                   </p>
                 </div>
               ))}
             </div>
           )}
 
-          <Panel title={`${label(chart.metric)} over time`}>
+          <Panel title={t("explore.overTime", { metric: mLabel(chart.metric) })}>
             {chart.points.length === 0 ? (
-              <Empty
-                title="No data in this range."
-                hint="Connect a platform and run a sync, or widen the dates."
-              />
+              <Empty title={t("explore.noData")} hint={t("explore.noDataHint")} />
             ) : (
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chart.points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                     <CartesianGrid stroke="#232C36" vertical={false} />
+                    {/* In Arabic, time reads right-to-left and the value axis
+                        moves to the right — otherwise the chart contradicts the
+                        page it sits in. */}
                     <XAxis
                       dataKey="date"
                       stroke="#8B98A5"
                       tick={{ fontSize: 11 }}
                       tickMargin={8}
+                      reversed={dir === "rtl"}
                     />
-                    <YAxis stroke="#8B98A5" tick={{ fontSize: 11 }} width={56} />
+                    <YAxis
+                      stroke="#8B98A5"
+                      tick={{ fontSize: 11 }}
+                      width={56}
+                      orientation={dir === "rtl" ? "right" : "left"}
+                    />
                     <Tooltip
                       contentStyle={{
                         background: "#161C23",
@@ -285,7 +285,7 @@ export default function ExplorePage() {
                         key={k}
                         type="monotone"
                         dataKey={k}
-                        name={timeKey ? platformLabel(k) : label(chart.metric)}
+                        name={timeKey ? pName(k) : mLabel(chart.metric)}
                         stroke={timeKey ? platformColor(k) : "#57C4D8"}
                         strokeWidth={2}
                         dot={false}
@@ -298,11 +298,11 @@ export default function ExplorePage() {
           </Panel>
 
           <Panel
-            title="Breakdown"
+            title={t("explore.breakdown")}
             action={
               groupBy.length > 0 && (
                 <span className="flex items-center gap-3 text-sm">
-                  <span className="eyebrow">Download</span>
+                  <span className="eyebrow">{t("common.download")}</span>
                   {(["csv", "xlsx", "json"] as const).map((fmt) => (
                     <a
                       key={fmt}
@@ -326,7 +326,7 @@ export default function ExplorePage() {
             }
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="eyebrow">Group by</span>
+              <span className="eyebrow">{t("explore.groupBy")}</span>
               {groupOptions.map((g) => (
                 <button
                   key={g}
@@ -338,18 +338,15 @@ export default function ExplorePage() {
                       : "border-line bg-surface text-muted hover:text-ink"
                   }`}
                 >
-                  {label(g)}
+                  {gLabel(g)}
                 </button>
               ))}
             </div>
 
             {groupBy.length === 0 ? (
-              <Empty
-                title="Pick something to group by."
-                hint="Campaign, platform, country — whatever you want to compare."
-              />
+              <Empty title={t("explore.pickGroup")} hint={t("explore.pickGroupHint")} />
             ) : table.length === 0 ? (
-              <Empty title="Nothing to show for this grouping." />
+              <Empty title={t("explore.nothingForGrouping")} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -357,12 +354,12 @@ export default function ExplorePage() {
                     <tr className="border-b border-line text-start">
                       {groupBy.map((g) => (
                         <th key={g} className="px-2 py-2 text-start eyebrow">
-                          {label(g)}
+                          {gLabel(g)}
                         </th>
                       ))}
                       {measures.map((m) => (
                         <th key={m} className="px-2 py-2 text-end eyebrow">
-                          {label(m)}
+                          {mLabel(m)}
                         </th>
                       ))}
                     </tr>
@@ -375,7 +372,7 @@ export default function ExplorePage() {
                             {g === "platform" ? (
                               <span className="flex items-center gap-1.5">
                                 <PlatformDot platform={String(row[g])} />
-                                {platformLabel(String(row[g]))}
+                                {pName(String(row[g]))}
                               </span>
                             ) : (
                               (row[g] ?? "—")
@@ -384,7 +381,7 @@ export default function ExplorePage() {
                         ))}
                         {measures.map((m) => (
                           <td key={m} className="num px-2 py-2 text-end">
-                            {formatMeasure(m, row[m])}
+                            {measure(m, row[m])}
                           </td>
                         ))}
                       </tr>
@@ -407,27 +404,29 @@ function TagsView({
   snapshot: GtmSnapshot | null;
   loading: boolean;
 }) {
+  const { t } = useLocale();
   if (loading) return <Spinner />;
   if (!snapshot?.captured_at || snapshot.data.length === 0) {
     return (
-      <Panel title="Tag Manager">
-        <Empty
-          title="No Tag Manager snapshot yet."
-          hint="Connect Tag Manager and run a sync to capture your container."
-        />
+      <Panel title={t("dataset.tags.note")}>
+        <Empty title={t("explore.tagsEmpty")} hint={t("explore.tagsEmptyHint")} />
       </Panel>
     );
   }
   return (
-    <Panel title={`Tag Manager · captured ${snapshot.captured_at.slice(0, 16).replace("T", " ")}`}>
+    <Panel
+      title={t("explore.captured", {
+        when: snapshot.captured_at.slice(0, 16).replace("T", " "),
+      })}
+    >
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line">
-              <th className="px-2 py-2 text-start eyebrow">Kind</th>
-              <th className="px-2 py-2 text-start eyebrow">Name</th>
-              <th className="px-2 py-2 text-start eyebrow">Type</th>
-              <th className="px-2 py-2 text-start eyebrow">Container</th>
+              <th className="px-2 py-2 text-start eyebrow">{t("explore.kind")}</th>
+              <th className="px-2 py-2 text-start eyebrow">{t("explore.name")}</th>
+              <th className="px-2 py-2 text-start eyebrow">{t("explore.type")}</th>
+              <th className="px-2 py-2 text-start eyebrow">{t("explore.container")}</th>
             </tr>
           </thead>
           <tbody>

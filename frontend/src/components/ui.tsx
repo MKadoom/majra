@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 
 import { platformColor } from "@/lib/api";
 import { dateRange } from "@/lib/format";
+import { useLocale } from "@/lib/locale";
 
 export function Panel({
   title,
@@ -39,13 +40,17 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export function Status({ value }: { value: string }) {
+  const { s, locale } = useLocale();
+  const label = s(value);
   return (
     <span
-      className={`rounded border px-1.5 py-0.5 text-eyebrow uppercase ${
-        STATUS_STYLE[value] ?? "border-line bg-raised text-muted"
-      }`}
+      className={`rounded border px-1.5 py-0.5 text-eyebrow ${
+        // Uppercasing is a Latin typographic device; Arabic has no case, and
+        // forcing it just adds noise.
+        locale === "en" ? "uppercase" : ""
+      } ${STATUS_STYLE[value] ?? "border-line bg-raised text-muted"}`}
     >
-      {value.replace(/_/g, " ")}
+      {label.startsWith("status.") ? value.replace(/_/g, " ") : label}
     </span>
   );
 }
@@ -78,13 +83,16 @@ export function ChannelStrip({
   from: string;
   to: string;
 }) {
+  const { t } = useLocale();
   const all = dateRange(from, to);
   const hue = platformColor(platform);
   const gaps = all.filter((d) => !days.has(d)).length;
   return (
     <div>
+      {/* The strip reads left-to-right in English and right-to-left in Arabic:
+          flex direction follows `dir`, so the oldest day is always at the start. */}
       <div className="flex items-end gap-[3px]" role="img"
-           aria-label={`${all.length - gaps} of ${all.length} days with data`}>
+           aria-label={`${all.length - gaps} / ${all.length}`}>
         {all.map((d) => {
           const on = days.has(d);
           return (
@@ -102,8 +110,10 @@ export function ChannelStrip({
       </div>
       <p className="mt-1.5 text-eyebrow text-muted">
         {gaps === 0
-          ? `${all.length} days, no gaps`
-          : `${gaps} ${gaps === 1 ? "day" : "days"} missing`}
+          ? t("conn.daysNoGaps", { n: all.length })
+          : gaps === 1
+            ? t("conn.dayMissing")
+            : t("conn.daysMissing", { n: gaps })}
       </p>
     </div>
   );

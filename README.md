@@ -62,8 +62,21 @@ Two things worth knowing about how it's built:
   didn't — so a broken connector reads as a hole in the channel without anyone
   opening a log.
 
-The layout is RTL-safe throughout (logical properties only — `border-inline-end`,
-`ms-*`/`me-*`, `text-start`/`text-end`), so an Arabic locale flips it for free.
+## Arabic / العربية
+
+The dashboard ships in English and Arabic. One toggle in the sidebar sets a
+cookie; the root layout reads it and sets `dir="rtl"` on `<html>` — and because
+every component uses logical CSS properties (`border-inline-end`, `ms-*`,
+`text-start`) and never `left`/`right`, that single attribute mirrors the entire
+interface. The chart mirrors too: the value axis moves to the right and time runs
+right-to-left, so it doesn't contradict the page it sits in.
+
+**Numbers stay in Western digits.** Plain `ar-SA` would render `12,345.67` as
+`١٢٬٣٤٥٫٦٧`, and browser ICU may default it to the Hijri calendar. Arabic-Indic
+numerals are right in prose, but Gulf business and financial reporting uses
+Western digits, and ad platforms report Gregorian days — a spend figure and a
+campaign date must read the same in both languages. So the locale is pinned to
+`ar-SA-u-nu-latn-ca-gregory`: Arabic text, Western numerals, Gregorian dates.
 
 ## Getting the data out
 

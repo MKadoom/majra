@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Empty, ErrorNote, Panel, PlatformDot, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
-import { timeAgo } from "@/lib/format";
+import { useLocale } from "@/lib/locale";
 import type { Account, ApiKey } from "@/lib/types";
 
 type Me = { id: number; email: string; created_at: string };
 
 export default function SettingsPage() {
+  const { t, p: pName, ago } = useLocale();
   const [me, setMe] = useState<Me | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -50,7 +51,7 @@ export default function SettingsPage() {
       setKeyName("");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create that key.");
+      setError(err instanceof Error ? err.message : t("set.keyFailed"));
     } finally {
       setBusy(false);
     }
@@ -68,32 +69,24 @@ export default function SettingsPage() {
   return (
     <div className="flex max-w-3xl flex-col gap-5">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+        <h1 className="text-xl font-semibold tracking-tight">{t("set.title")}</h1>
       </header>
 
-      <Panel title="Account">
+      <Panel title={t("set.account")}>
         <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
-          <dt className="text-muted">Email</dt>
+          <dt className="text-muted">{t("auth.email")}</dt>
           <dd>{me?.email}</dd>
-          <dt className="text-muted">Joined</dt>
+          <dt className="text-muted">{t("set.joined")}</dt>
           <dd className="num">{me?.created_at?.slice(0, 10)}</dd>
         </dl>
       </Panel>
 
-      <Panel title={`API keys (${live.length})`}>
-        <p className="mb-4 text-sm text-muted">
-          A key reads your numbers from your own scripts — it can call{" "}
-          <code className="num">/metrics</code> and <code className="num">/exports</code>,
-          and nothing else. It can&apos;t start a sync, add a connection, or make
-          another key.
-        </p>
+      <Panel title={t("set.keys", { n: live.length })}>
+        <p className="mb-4 text-sm text-muted">{t("set.keysBlurb")}</p>
 
         {freshKey && (
           <div className="mb-4 rounded-md border border-accent/40 bg-accent/10 p-3">
-            <p className="text-sm">
-              Copy this key now — majra stores only its hash, so it can&apos;t be
-              shown again.
-            </p>
+            <p className="text-sm">{t("set.keyOnce")}</p>
             <div className="mt-2 flex items-center gap-2">
               <code className="num flex-1 truncate rounded border border-line bg-ground px-2 py-1.5 text-xs">
                 {freshKey}
@@ -105,10 +98,10 @@ export default function SettingsPage() {
                   setCopied(true);
                 }}
               >
-                {copied ? "Copied" : "Copy"}
+                {copied ? t("set.copied") : t("set.copy")}
               </button>
               <button className="btn-quiet" onClick={() => setFreshKey(null)}>
-                Done
+                {t("set.done")}
               </button>
             </div>
           </div>
@@ -119,24 +112,24 @@ export default function SettingsPage() {
         <form onSubmit={createKey} className="mb-4 flex items-end gap-2">
           <div className="flex-1">
             <label htmlFor="keyname" className="eyebrow mb-1.5 block">
-              What is this key for?
+              {t("set.keyPurpose")}
             </label>
             <input
               id="keyname"
               required
               className="field"
-              placeholder="Nightly spreadsheet pull"
+              placeholder={t("set.keyPlaceholder")}
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
             />
           </div>
           <button className="btn-primary" disabled={busy || !keyName}>
-            {busy ? "Creating…" : "Create key"}
+            {busy ? t("set.creating") : t("set.createKey")}
           </button>
         </form>
 
         {live.length === 0 ? (
-          <Empty title="No keys yet." />
+          <Empty title={t("set.noKeys")} />
         ) : (
           <ul className="flex flex-col gap-2">
             {live.map((k) => (
@@ -147,13 +140,15 @@ export default function SettingsPage() {
                 <span className="num text-muted">{k.prefix}…</span>
                 <span className="min-w-0 truncate">{k.name}</span>
                 <span className="ms-auto text-muted">
-                  {k.last_used_at ? `used ${timeAgo(k.last_used_at)}` : "never used"}
+                  {k.last_used_at
+                    ? t("set.keyUsed", { when: ago(k.last_used_at) })
+                    : t("set.keyNeverUsed")}
                 </span>
                 <button
                   className="text-muted hover:text-bad"
                   onClick={() => revoke(k.id)}
                 >
-                  Revoke
+                  {t("set.revoke")}
                 </button>
               </li>
             ))}
@@ -161,11 +156,9 @@ export default function SettingsPage() {
         )}
       </Panel>
 
-      <Panel title={`Accounts majra can see (${accounts.length})`}>
+      <Panel title={t("set.accountsVisible", { n: accounts.length })}>
         {accounts.length === 0 ? (
-          <p className="text-sm text-muted">
-            None yet. Connect a platform and run a sync.
-          </p>
+          <p className="text-sm text-muted">{t("set.noAccounts")}</p>
         ) : (
           <ul className="flex flex-col gap-2 text-sm">
             {accounts.map((a) => (

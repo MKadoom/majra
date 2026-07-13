@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 
 import { Nav } from "@/components/nav";
 import { api } from "@/lib/api";
+import { useLocale } from "@/lib/locale";
 
 type Me = { id: number; email: string };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const { t } = useLocale();
   const [me, setMe] = useState<Me | null>(null);
   const [checked, setChecked] = useState(false);
 
@@ -26,7 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!checked) {
     return (
       <main className="grid min-h-screen place-items-center">
-        <p className="text-sm text-muted">Checking your session…</p>
+        <p className="text-sm text-muted">{t("auth.checking")}</p>
       </main>
     );
   }

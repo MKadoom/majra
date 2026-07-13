@@ -28,7 +28,19 @@ const config: Config = {
         gtm: "#7DD87D",
       },
       fontFamily: {
-        sans: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        // Arabic faces come first so they win for Arabic glyphs; the Latin stack
+        // still resolves for Latin text. To use a webfont instead (Tajawal, Cairo,
+        // IBM Plex Sans Arabic), add it here and load it in globals.css.
+        sans: [
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Noto Sans Arabic",
+          "Geeza Pro",
+          "Tahoma",
+          "Roboto",
+          "sans-serif",
+        ],
         // Metrics are monospaced with tabular figures so columns align and digits
         // don't jitter between refreshes. This is an instrument panel.
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],

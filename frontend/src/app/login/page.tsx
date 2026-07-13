@@ -4,9 +4,11 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ErrorNote } from "@/components/ui";
+import { useLocale } from "@/lib/locale";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +27,7 @@ export default function LoginPage() {
     setBusy(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(body.error ?? "That didn't work. Check your details and try again.");
+      setError(body.error ?? t("auth.failed"));
       return;
     }
     router.push("/explore");
@@ -42,15 +44,13 @@ export default function LoginPage() {
               مجرى
             </span>
           </h1>
-          <p className="mt-1 text-sm text-muted">
-            Every platform&apos;s numbers, in one channel.
-          </p>
+          <p className="mt-1 text-sm text-muted">{t("app.subtitle")}</p>
         </header>
 
         <form onSubmit={submit} className="panel flex flex-col gap-4 p-5">
           <div>
             <label htmlFor="email" className="eyebrow mb-1.5 block">
-              Email
+              {t("auth.email")}
             </label>
             <input
               id="email"
@@ -64,7 +64,7 @@ export default function LoginPage() {
           </div>
           <div>
             <label htmlFor="password" className="eyebrow mb-1.5 block">
-              Password
+              {t("auth.password")}
             </label>
             <input
               id="password"
@@ -77,7 +77,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
             {mode === "register" && (
-              <p className="mt-1.5 text-eyebrow text-muted">At least 8 characters.</p>
+              <p className="mt-1.5 text-eyebrow text-muted">{t("auth.minChars")}</p>
             )}
           </div>
 
@@ -85,10 +85,10 @@ export default function LoginPage() {
 
           <button type="submit" className="btn-primary" disabled={busy}>
             {busy
-              ? "Working…"
+              ? t("common.working")
               : mode === "login"
-                ? "Sign in"
-                : "Create account"}
+                ? t("auth.signIn")
+                : t("auth.createAccount")}
           </button>
 
           <button
@@ -99,9 +99,7 @@ export default function LoginPage() {
               setError(null);
             }}
           >
-            {mode === "login"
-              ? "No account yet? Create one"
-              : "Already have an account? Sign in"}
+            {mode === "login" ? t("auth.toRegister") : t("auth.toLogin")}
           </button>
         </form>
       </div>

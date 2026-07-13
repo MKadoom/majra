@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ChannelStrip, Empty, ErrorNote, Panel, PlatformDot, Spinner, Status } from "@/components/ui";
-import { api, platformLabel, qs } from "@/lib/api";
-import { daysAgo, timeAgo } from "@/lib/format";
+import { api, qs } from "@/lib/api";
+import { daysAgo } from "@/lib/format";
+import { useLocale } from "@/lib/locale";
 import type {
   Account,
   Connection,
@@ -22,6 +23,7 @@ const STRIP_FROM = daysAgo(14);
 const STRIP_TO = daysAgo(1);
 
 export default function ConnectionsPage() {
+  const { t } = useLocale();
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -63,30 +65,27 @@ export default function ConnectionsPage() {
       map["meta_social"] = new Set(social.data.map((r) => String(r.date)));
       setCoverage(map);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load your connections.");
+      setError(e instanceof Error ? e.message : t("conn.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <Spinner label="Loading connections" />;
+  if (loading) return <Spinner label={t("common.loading")} />;
 
   return (
     <div className="flex flex-col gap-5">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Connections</h1>
-          <p className="mt-0.5 text-sm text-muted">
-            Each platform is a tributary. A gap in a channel means data didn&apos;t
-            arrive that day.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight">{t("conn.title")}</h1>
+          <p className="mt-0.5 text-sm text-muted">{t("conn.subtitle")}</p>
         </div>
         <button className="btn-primary" onClick={() => setAdding((v) => !v)}>
-          {adding ? "Close" : "Add connection"}
+          {adding ? t("common.close") : t("conn.add")}
         </button>
       </header>
 
@@ -105,10 +104,7 @@ export default function ConnectionsPage() {
 
       {connections.length === 0 ? (
         <Panel>
-          <Empty
-            title="No connections yet."
-            hint="Add a platform to start pulling its numbers into majra."
-          />
+          <Empty title={t("conn.none")} hint={t("conn.noneHint")} />
         </Panel>
       ) : (
         <div className="flex flex-col gap-3">
@@ -141,6 +137,7 @@ function ConnectionCard({
   days: Set<string>;
   onChange: () => void;
 }) {
+  const { t, p: pName, ago } = useLocale();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const isConfig = CONFIG.has(connection.platform);
@@ -155,10 +152,10 @@ function ConnectionCard({
         date_to: daysAgo(1),
         breakdown: "none",
       });
-      setNote("Sync started — watch it on the Sync jobs page.");
+      setNote(t("conn.syncStarted"));
       onChange();
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Could not start that sync.");
+      setNote(e instanceof Error ? e.message : t("conn.loadFailed"));
     } finally {
       setBusy(false);
     }
@@ -175,7 +172,7 @@ function ConnectionCard({
       });
       onChange();
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Could not create that schedule.");
+      setNote(e instanceof Error ? e.message : t("conn.loadFailed"));
     } finally {
       setBusy(false);
     }
@@ -198,13 +195,13 @@ function ConnectionCard({
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 font-medium">
             <PlatformDot platform={connection.platform} />
-            {platformLabel(connection.platform)}
+            {pName(connection.platform)}
             <Status value={connection.status} />
           </h3>
           <p className="mt-1 text-sm text-muted">
             {accounts.length > 0
               ? accounts.map((a) => a.name).join(" · ")
-              : "No accounts discovered yet — run a sync."}
+              : t("conn.noAccounts")}
           </p>
         </div>
 
@@ -220,23 +217,26 @@ function ConnectionCard({
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <button className="btn-quiet" onClick={runNow} disabled={busy}>
-          {busy ? "Working…" : "Sync now"}
+          {busy ? t("common.working") : t("conn.syncNow")}
         </button>
 
         {schedule ? (
           <button className="btn-quiet" onClick={toggleSchedule} disabled={busy}>
-            {schedule.enabled ? "Pause daily sync" : "Resume daily sync"}
+            {schedule.enabled ? t("conn.pauseDaily") : t("conn.resumeDaily")}
           </button>
         ) : (
           <button className="btn-quiet" onClick={createSchedule} disabled={busy}>
-            Sync daily
+            {t("conn.syncDaily")}
           </button>
         )}
 
         <span className="ms-auto text-sm text-muted">
           {schedule
-            ? `${schedule.enabled ? "Daily" : "Paused"} · last run ${timeAgo(schedule.last_enqueued_at)}`
-            : "Manual only"}
+            ? t("conn.scheduleState", {
+                state: schedule.enabled ? t("conn.daily") : t("conn.paused"),
+                when: ago(schedule.last_enqueued_at),
+              })
+            : t("conn.manualOnly")}
         </span>
       </div>
 
@@ -254,6 +254,7 @@ function AddConnection({
   connected: Set<string>;
   onDone: () => void;
 }) {
+  const { t, p: pName } = useLocale();
   const [chosen, setChosen] = useState<PlatformInfo | null>(null);
   const [saJson, setSaJson] = useState("");
   const [propertyId, setPropertyId] = useState("");
@@ -270,7 +271,7 @@ function AddConnection({
       window.open(auth_url, "_blank", "noopener");
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start that connection.");
+      setError(e instanceof Error ? e.message : t("conn.loadFailed"));
     } finally {
       setBusy(false);
     }
@@ -288,15 +289,15 @@ function AddConnection({
       });
       onDone();
     } catch (e) {
-      if (e instanceof SyntaxError) setError("That isn't valid JSON. Paste the whole key file.");
-      else setError(e instanceof Error ? e.message : "Could not save that connection.");
+      if (e instanceof SyntaxError) setError(t("conn.badJson"));
+      else setError(e instanceof Error ? e.message : t("conn.loadFailed"));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Panel title="Add a connection">
+    <Panel title={t("conn.addTitle")}>
       {error && <ErrorNote message={error} />}
 
       <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -315,9 +316,13 @@ function AddConnection({
           >
             <PlatformDot platform={p.platform} />
             <span className="min-w-0">
-              <span className="block truncate">{platformLabel(p.platform)}</span>
+              <span className="block truncate">{pName(p.platform)}</span>
               <span className="block text-eyebrow text-muted">
-                {connected.has(p.platform) ? "Connected" : p.auth_kind === "oauth" ? "Authorize" : "Service account"}
+                {connected.has(p.platform)
+                  ? t("conn.connected")
+                  : p.auth_kind === "oauth"
+                    ? t("conn.authorize")
+                    : t("conn.serviceAccount")}
               </span>
             </span>
           </button>
@@ -327,12 +332,11 @@ function AddConnection({
       {chosen?.auth_kind === "service_account" && (
         <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
           <p className="text-sm text-muted">
-            {platformLabel(chosen.platform)} reads through a Google service account.
-            Grant it access in Google, then paste its key file here.
+            {t("conn.saHint", { platform: pName(chosen.platform) })}
           </p>
           <div>
             <label htmlFor="sa" className="eyebrow mb-1.5 block">
-              Service account key (JSON)
+              {t("conn.saKey")}
             </label>
             <textarea
               id="sa"
@@ -346,7 +350,7 @@ function AddConnection({
           {chosen.platform === "ga4" && (
             <div>
               <label htmlFor="prop" className="eyebrow mb-1.5 block">
-                GA4 property ID
+                {t("conn.propertyId")}
               </label>
               <input
                 id="prop"
@@ -362,7 +366,7 @@ function AddConnection({
             onClick={submitServiceAccount}
             disabled={busy || !saJson}
           >
-            {busy ? "Saving…" : "Save connection"}
+            {busy ? t("common.working") : t("conn.save")}
           </button>
         </div>
       )}

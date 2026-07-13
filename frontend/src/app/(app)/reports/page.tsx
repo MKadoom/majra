@@ -4,18 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Empty, ErrorNote, Panel, Spinner, Status } from "@/components/ui";
 import { api } from "@/lib/api";
-import { timeAgo } from "@/lib/format";
+import { useLocale } from "@/lib/locale";
 import type { SavedReport } from "@/lib/types";
 
 type Kind = "google_sheets" | "webhook" | "email";
 
-const KIND_LABEL: Record<string, string> = {
-  google_sheets: "Google Sheet",
-  webhook: "Webhook",
-  email: "Email",
-};
-
 export default function ReportsPage() {
+  const { t, ago } = useLocale();
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +21,11 @@ export default function ReportsPage() {
       setReports(await api.get<SavedReport[]>("/reports"));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load your reports.");
+      setError(e instanceof Error ? e.message : t("rep.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -40,25 +35,22 @@ export default function ReportsPage() {
     try {
       await api.post(`/reports/${id}/run`, {});
     } catch (e) {
-      setError(e instanceof Error ? e.message : "That report didn't deliver.");
+      setError(e instanceof Error ? e.message : t("rep.deliverFailed"));
     }
     await load();
   }
 
-  if (loading) return <Spinner label="Loading reports" />;
+  if (loading) return <Spinner label={t("common.loading")} />;
 
   return (
     <div className="flex flex-col gap-5">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Reports</h1>
-          <p className="mt-0.5 text-sm text-muted">
-            A query that runs on a schedule and delivers itself — to a Google
-            Sheet, a webhook, or your inbox.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight">{t("rep.title")}</h1>
+          <p className="mt-0.5 text-sm text-muted">{t("rep.subtitle")}</p>
         </div>
         <button className="btn-primary" onClick={() => setAdding((v) => !v)}>
-          {adding ? "Close" : "New report"}
+          {adding ? t("common.close") : t("rep.new")}
         </button>
       </header>
 
@@ -75,10 +67,7 @@ export default function ReportsPage() {
 
       {reports.length === 0 ? (
         <Panel>
-          <Empty
-            title="No reports yet."
-            hint="Set one up and yesterday's numbers will be waiting for you each morning."
-          />
+          <Empty title={t("rep.none")} hint={t("rep.noneHint")} />
         </Panel>
       ) : (
         <div className="flex flex-col gap-3">
@@ -92,22 +81,28 @@ export default function ReportsPage() {
                     {!r.enabled && <Status value="pending" />}
                   </h3>
                   <p className="mt-1 text-sm text-muted">
-                    {r.dataset} · last {String(r.params.last_days ?? 30)} days ·{" "}
-                    {r.cadence} at {String(r.hour_utc).padStart(2, "0")}:00 UTC →{" "}
-                    {KIND_LABEL[r.destination.kind] ?? r.destination.kind}
+                    {t("rep.summary", {
+                      dataset: t(`dataset.${r.dataset}`),
+                      days: String(r.params.last_days ?? 30),
+                      cadence: t("rep.daily"),
+                      hour: String(r.hour_utc).padStart(2, "0"),
+                      dest: t(`rep.dest.${r.destination.kind}`),
+                    })}
                   </p>
                   {r.last_error && (
                     <p className="mt-1 text-sm text-bad">{r.last_error}</p>
                   )}
                 </div>
                 <span className="text-sm text-muted">
-                  {r.last_run_at ? `ran ${timeAgo(r.last_run_at)}` : "never run"}
+                  {r.last_run_at
+                    ? t("rep.ran", { when: ago(r.last_run_at) })
+                    : t("rep.neverRun")}
                 </span>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
                 <button className="btn-quiet" onClick={() => runNow(r.id)}>
-                  Run now
+                  {t("rep.runNow")}
                 </button>
                 <button
                   className="btn-quiet"
@@ -116,7 +111,7 @@ export default function ReportsPage() {
                     await load();
                   }}
                 >
-                  {r.enabled ? "Pause" : "Resume"}
+                  {r.enabled ? t("rep.pause") : t("rep.resume")}
                 </button>
                 <button
                   className="btn-quiet ms-auto text-muted"
@@ -125,7 +120,7 @@ export default function ReportsPage() {
                     await load();
                   }}
                 >
-                  Delete
+                  {t("rep.delete")}
                 </button>
               </div>
             </article>
@@ -137,6 +132,7 @@ export default function ReportsPage() {
 }
 
 function NewReport({ onDone }: { onDone: () => void }) {
+  const { t } = useLocale();
   const [name, setName] = useState("");
   const [dataset, setDataset] = useState<"ads" | "web" | "social">("ads");
   const [lastDays, setLastDays] = useState(30);
@@ -182,36 +178,35 @@ function NewReport({ onDone }: { onDone: () => void }) {
       });
       onDone();
     } catch (err) {
-      if (err instanceof SyntaxError)
-        setError("That service-account JSON isn't valid. Paste the whole key file.");
-      else setError(err instanceof Error ? err.message : "Could not save that report.");
+      if (err instanceof SyntaxError) setError(t("rep.badSaJson"));
+      else setError(err instanceof Error ? err.message : t("rep.saveFailed"));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Panel title="New report">
+    <Panel title={t("rep.new")}>
       <form onSubmit={save} className="flex flex-col gap-4">
         {error && <ErrorNote message={error} />}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="rname" className="eyebrow mb-1.5 block">
-              Name
+              {t("rep.name")}
             </label>
             <input
               id="rname"
               required
               className="field"
-              placeholder="Daily spend by platform"
+              placeholder={t("rep.namePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
           <div>
             <label htmlFor="rdataset" className="eyebrow mb-1.5 block">
-              Data
+              {t("rep.data")}
             </label>
             <select
               id="rdataset"
@@ -219,14 +214,14 @@ function NewReport({ onDone }: { onDone: () => void }) {
               value={dataset}
               onChange={(e) => setDataset(e.target.value as typeof dataset)}
             >
-              <option value="ads">Ads</option>
-              <option value="web">Web (GA4)</option>
-              <option value="social">Social</option>
+              <option value="ads">{t("dataset.ads")}</option>
+              <option value="web">{t("dataset.web")}</option>
+              <option value="social">{t("dataset.social")}</option>
             </select>
           </div>
           <div>
             <label htmlFor="rdays" className="eyebrow mb-1.5 block">
-              Rolling window (days)
+              {t("rep.window")}
             </label>
             <input
               id="rdays"
@@ -240,7 +235,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
           </div>
           <div>
             <label htmlFor="rhour" className="eyebrow mb-1.5 block">
-              Send daily at (UTC)
+              {t("rep.sendAt")}
             </label>
             <input
               id="rhour"
@@ -255,7 +250,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
         </div>
 
         <div>
-          <span className="eyebrow mb-1.5 block">Deliver to</span>
+          <span className="eyebrow mb-1.5 block">{t("rep.deliverTo")}</span>
           <div className="flex flex-wrap gap-1.5">
             {(["google_sheets", "webhook", "email"] as Kind[]).map((k) => (
               <button
@@ -269,7 +264,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
                     : "border-line bg-surface text-muted hover:text-ink"
                 }`}
               >
-                {KIND_LABEL[k]}
+                {t(`rep.dest.${k}`)}
               </button>
             ))}
           </div>
@@ -277,14 +272,11 @@ function NewReport({ onDone }: { onDone: () => void }) {
 
         {kind === "google_sheets" && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted">
-              Share the sheet with your service account&apos;s email, giving it Editor
-              access. majra clears the tab and rewrites it on every run.
-            </p>
+            <p className="text-sm text-muted">{t("rep.sheetHint")}</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label htmlFor="sid" className="eyebrow mb-1.5 block">
-                  Spreadsheet ID
+                  {t("rep.spreadsheetId")}
                 </label>
                 <input
                   id="sid"
@@ -297,7 +289,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
               </div>
               <div>
                 <label htmlFor="sname" className="eyebrow mb-1.5 block">
-                  Tab name
+                  {t("rep.tabName")}
                 </label>
                 <input
                   id="sname"
@@ -309,7 +301,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
             </div>
             <div>
               <label htmlFor="sa" className="eyebrow mb-1.5 block">
-                Service account key (JSON)
+                {t("conn.saKey")}
               </label>
               <textarea
                 id="sa"
@@ -328,7 +320,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label htmlFor="url" className="eyebrow mb-1.5 block">
-                URL
+                {t("rep.url")}
               </label>
               <input
                 id="url"
@@ -342,7 +334,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
             </div>
             <div>
               <label htmlFor="secret" className="eyebrow mb-1.5 block">
-                Signing secret (optional)
+                {t("rep.secret")}
               </label>
               <input
                 id="secret"
@@ -350,9 +342,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
               />
-              <p className="mt-1.5 text-eyebrow text-muted">
-                We&apos;ll sign each payload so you can verify it came from majra.
-              </p>
+              <p className="mt-1.5 text-eyebrow text-muted">{t("rep.secretHint")}</p>
             </div>
           </div>
         )}
@@ -360,7 +350,7 @@ function NewReport({ onDone }: { onDone: () => void }) {
         {kind === "email" && (
           <div>
             <label htmlFor="to" className="eyebrow mb-1.5 block">
-              Send to
+              {t("rep.sendToLabel")}
             </label>
             <input
               id="to"
@@ -371,14 +361,12 @@ function NewReport({ onDone }: { onDone: () => void }) {
               value={to}
               onChange={(e) => setTo(e.target.value)}
             />
-            <p className="mt-1.5 text-eyebrow text-muted">
-              Needs SMTP configured on the server.
-            </p>
+            <p className="mt-1.5 text-eyebrow text-muted">{t("rep.smtpHint")}</p>
           </div>
         )}
 
         <button className="btn-primary self-start" disabled={busy}>
-          {busy ? "Saving…" : "Save report"}
+          {busy ? t("common.working") : t("rep.save")}
         </button>
       </form>
     </Panel>
