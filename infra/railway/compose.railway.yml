@@ -1,0 +1,79 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# majra — Railway import file
+#
+# This is NOT the file you run with `docker compose`. It's a translation of
+# infra/production/compose.prod.yml into the subset Railway understands, so you
+# can DRAG-AND-DROP it onto a Railway project canvas and have the four app
+# services scaffolded for you.
+#
+# What changed from the real production compose, and why:
+#   • caddy      — REMOVED. Railway terminates TLS for you on every public
+#                  service. You don't need a reverse proxy.
+#   • postgres   — REMOVED here; you add it as a Railway *managed* Postgres
+#     redis        and Redis instead (New → Database). Managed = automatic
+#                  backups + a dashboard, which is why majra's own backup
+#                  container is gone too.
+#   • backup     — REMOVED. Railway's managed Postgres handles backups.
+#   • prometheus — SKIPPED for the first deploy. Add later if you want the
+#     grafana      Grafana dashboard; nothing depends on them.
+#
+# So this file defines the four services that run majra's own code. Follow
+# RAILWAY_DEPLOY.md alongside it — the env vars below use Railway reference
+# variables (${{ Postgres.DATABASE_URL }}) that only resolve once you've added
+# the managed databases and named them Postgres and Redis.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # The dashboard. This is the only service that faces the internet — generate a
+  # public domain for it in Railway, and it's your app's URL.
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      # Railway private networking: services reach each other by service name.
+      # The backend listens on 8000 and is NOT public.
+      MAJRA_API_URL: http://backend.railway.internal:8000
+
+  # The API. Runs migrations on boot, then serves. No public domain — the
+  # frontend proxies to it over the private network.
+  backend:
+    build:
+      context: ./backend
+    # 2 workers suits Railway's default instance; the Redis-backed rate limiter
+    # (set via env below) keeps the limit correct across them.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    environment:
+      MAJRA_ENVIRONMENT: production
+      MAJRA_DATABASE_URL: ${{ Postgres.DATABASE_URL }}
+      MAJRA_REDIS_URL: ${{ Redis.REDIS_URL }}
+      MAJRA_RATE_LIMIT_STORAGE: ${{ Redis.REDIS_URL }}
+      MAJRA_HSTS_ENABLED: "true"
+      # ── paste these two in Railway (they're in RAILWAY_DEPLOY.md, kept out of
+      #    git on purpose) ──
+      # MAJRA_SECRET_KEY:
+      # MAJRA_ENCRYPTION_KEY:
+      # ── and this one, once the frontend has a domain ──
+      # MAJRA_PUBLIC_BASE_URL: https://<your-frontend>.up.railway.app
+
+  # The Celery worker — runs the actual platform syncs.
+  worker:
+    build:
+      context: ./backend
+    command: celery -A app.workers.tasks.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      MAJRA_ENVIRONMENT: production
+      MAJRA_DATABASE_URL: ${{ Postgres.DATABASE_URL }}
+      MAJRA_REDIS_URL: ${{ Redis.REDIS_URL }}
+      # MAJRA_SECRET_KEY / MAJRA_ENCRYPTION_KEY — same two values as backend
+      # MAJRA_PUBLIC_BASE_URL — same as backend
+
+  # The Celery beat scheduler — fires the daily syncs and due reports.
+  beat:
+    build:
+      context: ./backend
+    command: celery -A app.workers.tasks.celery_app beat --loglevel=info
+    environment:
+      MAJRA_ENVIRONMENT: production
+      MAJRA_DATABASE_URL: ${{ Postgres.DATABASE_URL }}
+      MAJRA_REDIS_URL: ${{ Redis.REDIS_URL }}
+      # MAJRA_SECRET_KEY / MAJRA_ENCRYPTION_KEY — same two values as backend

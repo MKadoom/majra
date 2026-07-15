@@ -1,6 +1,7 @@
 """majra settings. All env vars are prefixed MAJRA_ (SPEC §7)."""
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,6 +64,22 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "majra@localhost"
     smtp_starttls: bool = True
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_psycopg_driver(cls, v: str) -> str:
+        """Managed Postgres providers (Railway, Render, Fly, Heroku…) hand out a
+        bare ``postgresql://`` — or the legacy ``postgres://`` — URL. SQLAlchemy
+        reads that as "driver unspecified" and reaches for psycopg2, which isn't
+        installed, so the app would die on boot. majra runs on psycopg 3, so we
+        pin the driver here. A URL that already names a driver (``+psycopg``,
+        ``+asyncpg``) is left untouched.
+        """
+        if v.startswith("postgres://"):
+            v = "postgresql://" + v[len("postgres://"):]
+        if v.startswith("postgresql://"):
+            v = "postgresql+psycopg://" + v[len("postgresql://"):]
+        return v
 
 
 @lru_cache
