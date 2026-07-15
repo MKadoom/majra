@@ -98,7 +98,7 @@ For **each** of `backend`, `worker`, `beat`, `frontend`:
      frontend. *(This is what makes Railway find each Dockerfile. Getting it
      wrong is the usual cause of a build that can't find its Dockerfile.)*
 3. **Settings → Deploy → Custom Start Command:**
-   - **backend:** `sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"`
+   - **backend:** `sh -c "alembic upgrade head && uvicorn app.main:app --host :: --port 8000 --workers 2"`
    - **worker:** `celery -A app.workers.tasks.celery_app worker --loglevel=info --concurrency=4`
    - **beat:** `celery -A app.workers.tasks.celery_app beat --loglevel=info`
    - **frontend:** leave default (its Dockerfile already starts the server).

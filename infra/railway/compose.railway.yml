@@ -41,7 +41,7 @@ services:
       context: ./backend
     # 2 workers suits Railway's default instance; the Redis-backed rate limiter
     # (set via env below) keeps the limit correct across them.
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host :: --port 8000 --workers 2"
     environment:
       MAJRA_ENVIRONMENT: production
       MAJRA_DATABASE_URL: ${{ Postgres.DATABASE_URL }}
