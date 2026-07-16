@@ -12,6 +12,7 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -140,9 +141,26 @@ class SnapchatConnector(BaseConnector):
             raise PermanentError(
                 f"snapchat: breakdown '{breakdown}' not supported (only 'none')"
             )
+        # Snapchat requires DAY-granularity timeseries start/end to be midnight
+        # in the ad account's own timezone (not UTC), or it 400s with
+        # "must have a start time that is the start of the day".
+        acct_resp = self._get(f"{API}/adaccounts/{account_external_id}", tokens)
+        _accts = acct_resp.get("adaccounts", [])
+        tz_name = (
+            _accts[0].get("adaccount", {}).get("timezone") if _accts else None
+        ) or "UTC"
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("UTC")
         # end_time is exclusive; add a day to include date_to.
-        start = f"{date_from.isoformat()}T00:00:00.000-00:00"
-        end = f"{(date_to + timedelta(days=1)).isoformat()}T00:00:00.000-00:00"
+        end_date = date_to + timedelta(days=1)
+        start = datetime(
+            date_from.year, date_from.month, date_from.day, tzinfo=tz
+        ).isoformat()
+        end = datetime(
+            end_date.year, end_date.month, end_date.day, tzinfo=tz
+        ).isoformat()
         data = self._get(
             f"{API}/adaccounts/{account_external_id}/stats",
             tokens,
