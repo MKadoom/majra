@@ -27,6 +27,17 @@ DIALOG = f"https://www.facebook.com/{GRAPH_VERSION}/dialog/oauth"
 TRANSIENT_CODES = {1, 2, 4, 17, 32, 341, 613}
 AUTH_CODES = {102, 190}
 
+# Railway's container egress can't reach graph.facebook.com over IPv6 — httpx
+# would otherwise pick the AAAA record and fail with [Errno 101] Network is
+# unreachable. Binding this client to the IPv4 wildcard forces it to use the A
+# record. This only affects Meta's public HTTP calls; Postgres/Redis use their
+# own (IPv6 railway.internal) connections and are unaffected.
+_HTTP = httpx.Client(
+    timeout=60,
+    transport=httpx.HTTPTransport(local_address="0.0.0.0"),
+    follow_redirects=True,
+)
+
 INSIGHT_FIELDS = (
     "date_start,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,"
     "spend,impressions,clicks,actions,action_values,video_play_actions"
@@ -204,7 +215,7 @@ class MetaConnector(BaseConnector):
         last = "meta: retries exhausted"
         for attempt in range(5):
             try:
-                resp = httpx.get(url, params=params, timeout=60)
+                resp = _HTTP.get(url, params=params)
             except httpx.HTTPError as exc:  # network layer
                 last = f"meta: network error {exc}"
                 self._backoff(attempt)
