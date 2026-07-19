@@ -10,7 +10,12 @@ import structlog
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.connectors.base import PermanentError, TokenSet, get_connector
+from app.connectors.base import (
+    PermanentError,
+    TokenSet,
+    TransientError,
+    get_connector,
+)
 from app.core.observability import SYNC_ROWS, SYNC_SECONDS, SYNCS
 from app.core.security import decrypt_tokens
 from app.models import (
@@ -190,49 +195,72 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
     raw_model = connector.raw_model
     total_rows = 0
     facts: list[dict] = []
+    synced_acc_ids: list[int] = []
+    skipped: list[str] = []
     for acc in accounts:
-        camp_map, adset_map, ad_map, ad_parents = _sync_entities(
-            db, connector, tokens, acc
-        )
-        fetched = 0
-        for raw in connector.fetch_insights(
-            tokens, acc.external_id, job.date_from, job.date_to, job.breakdown
-        ):
-            _append_raw(db, raw_model, conn, job, acc.external_id, raw)
-            norm = connector.normalize_insight(raw, job.breakdown)
-            campaign_id, adset_id, ad_id = _resolve_dims(
-                db, acc, norm, camp_map, adset_map, ad_map, ad_parents
+        # Per-account isolation: one ad account returning a persistent error
+        # (e.g. Meta HTTP 500 on a disabled/broken account) must not sink the
+        # whole sync. Skip that account and keep the healthy ones.
+        try:
+            camp_map, adset_map, ad_map, ad_parents = _sync_entities(
+                db, connector, tokens, acc
             )
-            facts.append(
-                dict(
-                    date=date.fromisoformat(norm["date"]),
-                    platform=conn.platform,
-                    account_id=acc.id,
-                    campaign_id=campaign_id,
-                    adset_id=adset_id,
-                    ad_id=ad_id,
-                    breakdown=job.breakdown,
-                    country=norm.get("country"),
-                    device=norm.get("device"),
-                    age=norm.get("age"),
-                    gender=norm.get("gender"),
-                    placement=norm.get("placement"),
-                    spend=norm["spend"],
-                    currency=acc.currency,
-                    impressions=norm["impressions"],
-                    clicks=norm["clicks"],
-                    conversions=norm["conversions"],
-                    conversion_value=norm["conversion_value"],
-                    video_views=norm["video_views"],
-                    leads=norm["leads"],
-                    purchases=norm["purchases"],
+            fetched = 0
+            for raw in connector.fetch_insights(
+                tokens, acc.external_id, job.date_from, job.date_to, job.breakdown
+            ):
+                _append_raw(db, raw_model, conn, job, acc.external_id, raw)
+                norm = connector.normalize_insight(raw, job.breakdown)
+                campaign_id, adset_id, ad_id = _resolve_dims(
+                    db, acc, norm, camp_map, adset_map, ad_map, ad_parents
                 )
+                facts.append(
+                    dict(
+                        date=date.fromisoformat(norm["date"]),
+                        platform=conn.platform,
+                        account_id=acc.id,
+                        campaign_id=campaign_id,
+                        adset_id=adset_id,
+                        ad_id=ad_id,
+                        breakdown=job.breakdown,
+                        country=norm.get("country"),
+                        device=norm.get("device"),
+                        age=norm.get("age"),
+                        gender=norm.get("gender"),
+                        placement=norm.get("placement"),
+                        spend=norm["spend"],
+                        currency=acc.currency,
+                        impressions=norm["impressions"],
+                        clicks=norm["clicks"],
+                        conversions=norm["conversions"],
+                        conversion_value=norm["conversion_value"],
+                        video_views=norm["video_views"],
+                        leads=norm["leads"],
+                        purchases=norm["purchases"],
+                    )
+                )
+                fetched += 1
+        except (TransientError, PermanentError, Exception) as exc:  # noqa: BLE001
+            skipped.append(acc.external_id)
+            _log(
+                db, job, "account.skipped", level="warning",
+                account=acc.external_id, error=f"{type(exc).__name__}: {exc}",
             )
-            fetched += 1
+            continue
+        synced_acc_ids.append(acc.id)
         _log(db, job, "insights.fetched", account=acc.external_id, rows=fetched)
         total_rows += fetched
 
-    acc_ids = [a.id for a in accounts]
+    if skipped and not synced_acc_ids:
+        # Every account failed — surface it as a real failure.
+        raise TransientError(
+            f"{conn.platform}: all {len(skipped)} account(s) errored "
+            f"(e.g. {skipped[0]})"
+        )
+
+    # Only delete+reinsert facts for accounts we actually synced this run, so a
+    # skipped account keeps whatever data it already had (idempotent per account).
+    acc_ids = synced_acc_ids
     deleted = 0
     if acc_ids:
         res = db.execute(
@@ -247,7 +275,8 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
     if facts:
         db.bulk_insert_mappings(FactAdPerformance, facts)
     return {
-        "accounts": len(accounts),
+        "accounts": len(synced_acc_ids),
+        "accounts_skipped": len(skipped),
         "rows_fetched": total_rows,
         "rows_deleted": deleted,
         "rows_inserted": len(facts),
