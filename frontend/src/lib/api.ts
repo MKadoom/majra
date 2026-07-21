@@ -99,12 +99,27 @@ export const DATASET_ENDPOINT: Record<Exclude<Dataset, "tags">, string> = {
   social: "/social-metrics",
 };
 
-/** Measures each dataset returns, in display order. */
+/**
+ * Measures each dataset returns, in display order — decision metrics first.
+ *
+ * The first `PRIMARY_MEASURES` of each list are what someone acts on (what did
+ * it cost, what did it produce, was it worth it) and render large; the rest are
+ * the supporting volume and efficiency numbers, rendered compactly. Order
+ * matters twice over: measures[0] is also the metric charted over time and
+ * split by platform.
+ */
 export const DATASET_MEASURES: Record<Exclude<Dataset, "tags">, string[]> = {
-  ads: ["spend", "impressions", "clicks", "ctr", "cpc", "conversions", "conversion_value", "roas"],
+  ads: [
+    "spend", "conversions", "cpa", "roas",
+    "impressions", "clicks", "ctr", "cpc", "cpm",
+    "conversion_value", "video_views", "leads", "purchases",
+  ],
   web: ["sessions", "users", "conversions", "revenue"],
   social: ["impressions", "reach", "engagement", "followers"],
 };
+
+/** How many leading measures get the large treatment. */
+export const PRIMARY_MEASURES = 4;
 
 export const DATASET_GROUPS: Record<Exclude<Dataset, "tags">, string[]> = {
   ads: ["platform", "date", "account", "campaign", "adset", "ad", "country", "device"],

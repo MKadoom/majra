@@ -19,6 +19,7 @@ import {
   DATASET_GROUPS,
   DATASET_MEASURES,
   Dataset,
+  PRIMARY_MEASURES,
   api,
   exportUrl,
   platformColor,
@@ -134,25 +135,31 @@ export default function ExplorePage() {
   const byPlatform = useMemo(() => {
     if (dataset !== "ads" || !timeKey) return [];
     const metric = measures[0];
-    const sums = new Map<string, { value: number; rows: number }>();
+    const sums = new Map<string, { value: number; rows: number; last: string }>();
     for (const row of series) {
       const key = String(row[timeKey] ?? "");
       if (!key) continue;
-      const cur = sums.get(key) ?? { value: 0, rows: 0 };
+      const cur = sums.get(key) ?? { value: 0, rows: 0, last: "" };
       cur.value += Number(row[metric] ?? 0);
       cur.rows += 1;
+      // ISO dates sort lexically, so the max string is the latest day we hold.
+      const d = String(row.date ?? "");
+      if (d > cur.last) cur.last = d;
       sums.set(key, cur);
     }
     const total = [...sums.values()].reduce((a, b) => a + b.value, 0);
     return [...sums.entries()]
-      .map(([platform, { value, rows }]) => ({
+      .map(([platform, { value, rows, last }]) => ({
         platform,
         value,
         rows,
         share: total > 0 ? value / total : 0,
+        // A platform whose newest day is behind the window end hasn't caught
+        // up. Saying so beats letting a short bar read as poor performance.
+        staleThrough: last && last < to ? last : null,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [series, dataset, timeKey, measures]);
+  }, [series, dataset, timeKey, measures, to]);
 
   const togglePlatform = (p: string) =>
     setPlatforms((prev) =>
@@ -278,20 +285,40 @@ export default function ExplorePage() {
             </div>
           )}
 
-          {/* Headline numbers */}
+          {/* Headline numbers, in two tiers. The four you act on are large;
+              the volume and efficiency numbers behind them stay available but
+              quiet, so the eye lands on the decision first. */}
           {loading && !totals ? (
             <Spinner />
           ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {measures.slice(0, 8).map((m) => (
-                <div key={m} className="panel p-4">
-                  <p className="eyebrow">{mLabel(m)}</p>
-                  <p className="num mt-1.5 text-xl">
-                    {totals ? measure(m, totals[m]) : "—"}
-                  </p>
+            <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {measures.slice(0, PRIMARY_MEASURES).map((m) => (
+                  <div key={m} className="panel p-4">
+                    <p className="eyebrow">{mLabel(m)}</p>
+                    <p className="num mt-1.5 text-xl">
+                      {totals ? measure(m, totals[m]) : "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {measures.length > PRIMARY_MEASURES && (
+                <div className="panel grid grid-cols-2 gap-x-6 gap-y-3 p-4 sm:grid-cols-3 lg:grid-cols-5">
+                  {measures.slice(PRIMARY_MEASURES).map((m) => (
+                    <div
+                      key={m}
+                      className="flex items-baseline justify-between gap-2"
+                    >
+                      <span className="eyebrow truncate">{mLabel(m)}</span>
+                      <span className="num text-sm">
+                        {totals ? measure(m, totals[m]) : "—"}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
 
           {/* Which channel produced the headline number. One row per platform,
@@ -301,7 +328,7 @@ export default function ExplorePage() {
           {!loading && byPlatform.length > 0 && (
             <Panel title={t("explore.byPlatform", { metric: mLabel(chart.metric) })}>
               <ul className="divide-y divide-line">
-                {byPlatform.map(({ platform, value, share, rows }) => (
+                {byPlatform.map(({ platform, value, share, staleThrough }) => (
                   <li
                     key={platform}
                     className="flex items-center gap-3 px-4 py-2.5"
@@ -310,6 +337,14 @@ export default function ExplorePage() {
                       <PlatformDot platform={platform} />
                       <span className="truncate text-sm">{pName(platform)}</span>
                     </span>
+                    {staleThrough && (
+                      <span
+                        className="whitespace-nowrap rounded border border-line px-1.5 py-0.5 text-eyebrow uppercase text-muted"
+                        title={t("explore.staleTitle")}
+                      >
+                        {t("explore.through", { date: staleThrough })}
+                      </span>
+                    )}
                     <span
                       className="h-1.5 flex-1 overflow-hidden rounded-full bg-line"
                       role="presentation"
