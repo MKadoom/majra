@@ -253,10 +253,14 @@ export default function ExplorePage() {
                         ? "border-accent bg-accent/15 font-medium text-ink"
                         : state === "all"
                           ? "border-line bg-surface text-ink"
-                          : "border-line/60 bg-transparent text-muted/60 line-through decoration-muted/40"
+                          : // Muted, not faint: text-muted on surface is 5.8:1,
+                          // where the /60 tint it replaces measured 2.9:1 and
+                          // failed WCAG AA. The strike-through carries the
+                          // "excluded" meaning; contrast stays legible.
+                          "border-line bg-transparent text-muted line-through decoration-muted/60"
                     }`}
                   >
-                    <span className={state === "off" ? "opacity-40" : ""}>
+                    <span className={state === "off" ? "opacity-60" : ""}>
                       <PlatformDot platform={p} />
                     </span>
                     {pName(p)}
