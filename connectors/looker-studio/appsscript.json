@@ -1,0 +1,16 @@
+{
+  "timeZone": "Etc/UTC",
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "dataStudio": {
+    "name": "majra",
+    "logoUrl": "https://raw.githubusercontent.com/MKadoom/majra/main/frontend/public/favicon.svg",
+    "company": "majra",
+    "companyUrl": "https://github.com/MKadoom/majra",
+    "addonUrl": "https://github.com/MKadoom/majra/tree/main/connectors/looker-studio",
+    "supportUrl": "https://github.com/MKadoom/majra/issues",
+    "description": "Blended marketing data from your own self-hosted majra instance — paid ads, web analytics and organic social in one source.",
+    "sources": ["majra"],
+    "shortDescription": "Your majra warehouse, in Looker Studio."
+  }
+}
