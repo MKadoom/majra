@@ -44,6 +44,23 @@ def create_oauth_state(user_id: int, platform: str) -> str:
     return _token(str(user_id), "oauth_state", timedelta(minutes=10), platform=platform)
 
 
+def create_connect_invite(user_id: int, platform: str, days: int) -> str:
+    """A link a client can open to attach *their* ad account to *your* majra.
+
+    `sub` is the inviting owner, so when the OAuth callback fires it creates the
+    connection under that owner — the client never needs a majra login, and you
+    never need their platform password.
+
+    The token grants exactly one power: adding a connection. It carries no read
+    access, so it cannot expose data already in the instance. It is stateless,
+    which means it works until it expires rather than being consumable once —
+    keep the TTL short and treat the link as a secret.
+    """
+    return _token(
+        str(user_id), "connect_invite", timedelta(days=days), platform=platform
+    )
+
+
 def decode_token(token: str, expected_typ: str) -> dict:
     payload = jwt.decode(token, settings.secret_key, algorithms=[ALGO])
     if payload.get("typ") != expected_typ:

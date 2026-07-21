@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/locale";
 import type {
   Account,
   Connection,
+  InviteLink,
   MetricPage,
   PlatformInfo,
   Schedule,
@@ -260,6 +261,27 @@ function AddConnection({
   const [propertyId, setPropertyId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [inviteMode, setInviteMode] = useState(false);
+  const [invite, setInvite] = useState<InviteLink | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function makeInvite(p: PlatformInfo) {
+    setBusy(true);
+    setError(null);
+    setInvite(null);
+    try {
+      setInvite(
+        await api.post<InviteLink>("/connect-links", {
+          platform: p.platform,
+          days: 7,
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("conn.loadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function startOAuth(p: PlatformInfo) {
     setBusy(true);
@@ -300,12 +322,77 @@ function AddConnection({
     <Panel title={t("conn.addTitle")}>
       {error && <ErrorNote message={error} />}
 
+      {/* Two ways in, same list of platforms: authorise an account you hold, or
+          send the account's owner a link so they authorise it themselves. The
+          second is how you onboard a client without touching their password. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => {
+            setInviteMode(false);
+            setInvite(null);
+          }}
+          aria-pressed={!inviteMode}
+          className={`btn ${inviteMode ? "btn-quiet" : "btn-primary"}`}
+        >
+          {t("conn.modeSelf")}
+        </button>
+        <button
+          onClick={() => {
+            setInviteMode(true);
+            setInvite(null);
+          }}
+          aria-pressed={inviteMode}
+          className={`btn ${inviteMode ? "btn-primary" : "btn-quiet"}`}
+        >
+          {t("conn.modeInvite")}
+        </button>
+        <p className="text-sm text-muted">
+          {inviteMode ? t("conn.inviteHint") : t("conn.selfHint")}
+        </p>
+      </div>
+
+      {invite && (
+        <div className="mb-3 rounded-md border border-accent/40 bg-accent/10 p-3">
+          <p className="eyebrow mb-1.5">
+            {t("conn.inviteReady", { platform: pName(invite.platform) })}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              readOnly
+              value={invite.url}
+              onFocus={(e) => e.currentTarget.select()}
+              aria-label={t("conn.inviteReady", {
+                platform: pName(invite.platform),
+              })}
+              className="field min-w-0 flex-1 text-sm"
+            />
+            <button
+              className="btn-quiet"
+              onClick={() => {
+                void navigator.clipboard?.writeText(invite.url);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? t("common.copied") : t("common.copy")}
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-muted">
+            {t("conn.inviteExpiry", { days: invite.expires_in_days })}
+          </p>
+        </div>
+      )}
+
       <div className="mt-1 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {platforms.map((p) => (
           <button
             key={p.platform}
             onClick={() =>
-              p.auth_kind === "oauth" ? startOAuth(p) : setChosen(p)
+              p.auth_kind === "oauth"
+                ? inviteMode
+                  ? makeInvite(p)
+                  : startOAuth(p)
+                : setChosen(p)
             }
             disabled={busy}
             className={`flex items-center gap-2 rounded-md border px-3 py-2.5 text-start text-sm transition-colors ${

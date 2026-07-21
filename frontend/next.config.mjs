@@ -16,6 +16,10 @@ const nextConfig = {
       // `Authorization: Bearer <majra api key>` reaches the backend as-is.
       // This is what the MCP server, Looker Studio and Sheets connect to.
       { source: "/v1/:path*", destination: `${api}/:path*` },
+      // Client-facing invite pages: someone with a link authorises their own ad
+      // account without a majra login, so these must be public and are served
+      // by the backend, not the app shell.
+      { source: "/invite/:path*", destination: `${api}/invite/:path*` },
     ];
   },
 };

@@ -1,5 +1,12 @@
 export type PlatformInfo = { platform: string; auth_kind: "oauth" | "service_account" };
 
+/** A link a client opens to attach their own ad account to this instance. */
+export type InviteLink = {
+  url: string;
+  platform: string;
+  expires_in_days: number;
+};
+
 export type Connection = {
   id: number;
   platform: string;
