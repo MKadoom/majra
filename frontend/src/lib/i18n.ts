@@ -87,6 +87,9 @@ const en: Dict = {
   "explore.title": "Explore",
   "explore.platforms": "Platforms",
   "explore.overTime": "{metric} over time",
+  "explore.byPlatform": "{metric} by platform",
+  "explore.zeroPlatformHint":
+    "A platform showing zero returned data for this range but no spend — it ran no paid delivery, or its sync has not caught up yet.",
   "explore.breakdown": "Breakdown",
   "explore.groupBy": "Group by",
   "explore.noData": "No data in this range.",
@@ -318,6 +321,9 @@ const ar: Dict = {
   "explore.title": "استكشاف",
   "explore.platforms": "المنصات",
   "explore.overTime": "{metric} عبر الزمن",
+  "explore.byPlatform": "{metric} حسب المنصة",
+  "explore.zeroPlatformHint":
+    "المنصة التي تظهر صفراً أعادت بيانات لهذه الفترة لكن دون إنفاق — إما لم تُشغّل إعلانات مدفوعة، أو أن مزامنتها لم تكتمل بعد.",
   "explore.breakdown": "التفصيل",
   "explore.groupBy": "التجميع حسب",
   "explore.noData": "لا توجد بيانات في هذه الفترة.",

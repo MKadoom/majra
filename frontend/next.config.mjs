@@ -10,6 +10,12 @@ const nextConfig = {
     const api = process.env.MAJRA_API_URL || "http://backend.railway.internal:8000";
     return [
       { source: "/connect/:path*", destination: `${api}/connect/:path*` },
+      // Public, API-key-authenticated surface. The browser app talks to the
+      // backend through /api/proxy (which attaches the session cookie); this is
+      // the other door — for machines. Headers pass through untouched, so an
+      // `Authorization: Bearer <majra api key>` reaches the backend as-is.
+      // This is what the MCP server, Looker Studio and Sheets connect to.
+      { source: "/v1/:path*", destination: `${api}/:path*` },
     ];
   },
 };

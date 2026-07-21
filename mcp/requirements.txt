@@ -1,0 +1,4 @@
+# majra MCP server — run locally, talks to your majra instance over HTTPS.
+#   pip install -r mcp/requirements.txt
+mcp>=1.2.0
+httpx>=0.28.1

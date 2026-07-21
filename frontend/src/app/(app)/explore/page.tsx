@@ -124,6 +124,36 @@ export default function ExplorePage() {
     };
   }, [series, measures, timeKey]);
 
+  /**
+   * Per-platform totals for the headline measure. The blended KPI cards answer
+   * "how did we do"; this answers "which channel did it" — without making the
+   * person filter to one platform at a time and hold numbers in their head.
+   * Derived from the series we already fetched (grouped by platform × date),
+   * so it costs no extra request.
+   */
+  const byPlatform = useMemo(() => {
+    if (dataset !== "ads" || !timeKey) return [];
+    const metric = measures[0];
+    const sums = new Map<string, { value: number; rows: number }>();
+    for (const row of series) {
+      const key = String(row[timeKey] ?? "");
+      if (!key) continue;
+      const cur = sums.get(key) ?? { value: 0, rows: 0 };
+      cur.value += Number(row[metric] ?? 0);
+      cur.rows += 1;
+      sums.set(key, cur);
+    }
+    const total = [...sums.values()].reduce((a, b) => a + b.value, 0);
+    return [...sums.entries()]
+      .map(([platform, { value, rows }]) => ({
+        platform,
+        value,
+        rows,
+        share: total > 0 ? value / total : 0,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [series, dataset, timeKey, measures]);
+
   const togglePlatform = (p: string) =>
     setPlatforms((prev) =>
       prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p],
@@ -202,19 +232,33 @@ export default function ExplorePage() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="eyebrow">{t("explore.platforms")}</span>
               {AD_PLATFORMS.map((p) => {
-                const on = platforms.length === 0 || platforms.includes(p);
+                // Three distinct states, not two: "all" (no filter set) reads
+                // neutral, an explicitly picked platform reads lit, and one
+                // excluded by someone else's pick reads clearly switched off.
+                const filtering = platforms.length > 0;
+                const picked = platforms.includes(p);
+                const state = !filtering ? "all" : picked ? "on" : "off";
                 return (
                   <button
                     key={p}
                     onClick={() => togglePlatform(p)}
-                    aria-pressed={platforms.includes(p)}
-                    className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm transition-colors ${
-                      on
-                        ? "border-line bg-surface text-ink"
-                        : "border-line bg-surface text-muted/50"
+                    aria-pressed={picked}
+                    title={
+                      state === "off"
+                        ? `${pName(p)} — ${t("common.showAll")}`
+                        : pName(p)
+                    }
+                    className={`flex min-h-[32px] items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm transition-colors ${
+                      state === "on"
+                        ? "border-accent bg-accent/15 font-medium text-ink"
+                        : state === "all"
+                          ? "border-line bg-surface text-ink"
+                          : "border-line/60 bg-transparent text-muted/60 line-through decoration-muted/40"
                     }`}
                   >
-                    <PlatformDot platform={p} />
+                    <span className={state === "off" ? "opacity-40" : ""}>
+                      <PlatformDot platform={p} />
+                    </span>
                     {pName(p)}
                   </button>
                 );
@@ -244,6 +288,51 @@ export default function ExplorePage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Which channel produced the headline number. One row per platform,
+              with a share bar in that platform's own hue. A platform that
+              returned rows but no spend says so plainly, rather than silently
+              contributing nothing to a blended total. */}
+          {!loading && byPlatform.length > 0 && (
+            <Panel title={t("explore.byPlatform", { metric: mLabel(chart.metric) })}>
+              <ul className="divide-y divide-line">
+                {byPlatform.map(({ platform, value, share, rows }) => (
+                  <li
+                    key={platform}
+                    className="flex items-center gap-3 px-4 py-2.5"
+                  >
+                    <span className="flex min-w-[7.5rem] items-center gap-2">
+                      <PlatformDot platform={platform} />
+                      <span className="truncate text-sm">{pName(platform)}</span>
+                    </span>
+                    <span
+                      className="h-1.5 flex-1 overflow-hidden rounded-full bg-line"
+                      role="presentation"
+                    >
+                      <span
+                        className="block h-full rounded-full transition-[width]"
+                        style={{
+                          width: `${Math.max(share * 100, value > 0 ? 2 : 0)}%`,
+                          backgroundColor: platformColor(platform),
+                        }}
+                      />
+                    </span>
+                    <span className="num w-24 text-end text-sm">
+                      {measure(chart.metric, value)}
+                    </span>
+                    <span className="num w-14 text-end text-sm text-muted">
+                      {value > 0 ? `${(share * 100).toFixed(0)}%` : "—"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {byPlatform.some((p) => p.value === 0) && (
+                <p className="border-t border-line px-4 py-2 text-sm text-muted">
+                  {t("explore.zeroPlatformHint")}
+                </p>
+              )}
+            </Panel>
           )}
 
           <Panel title={t("explore.overTime", { metric: mLabel(chart.metric) })}>
