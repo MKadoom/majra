@@ -62,6 +62,38 @@ export function dateRange(from: string, to: string): string[] {
   return out;
 }
 
+/**
+ * The window of equal length immediately before [from, to], used for
+ * period-over-period comparison. Inclusive dates, so the day before `from`
+ * starts the previous range and it ends the day before `to`.
+ */
+export function prevWindow(
+  from: string,
+  to: string,
+): { prevFrom: string; prevTo: string } {
+  const start = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  const lenDays =
+    Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  // Previous window is the same length, immediately before this one: it ends
+  // the day before `from` and starts `lenDays - 1` days before that.
+  const prevTo = new Date(start);
+  prevTo.setUTCDate(prevTo.getUTCDate() - 1);
+  const prevFrom = new Date(prevTo);
+  prevFrom.setUTCDate(prevFrom.getUTCDate() - (lenDays - 1));
+  return { prevFrom: isoDate(prevFrom), prevTo: isoDate(prevTo) };
+}
+
+/** Percentage change from `prev` to `curr`, or null when there's no baseline. */
+export function pctDelta(
+  curr: number | null | undefined,
+  prev: number | null | undefined,
+): number | null {
+  if (prev === null || prev === undefined || prev === 0) return null;
+  if (curr === null || curr === undefined) return null;
+  return ((curr - prev) / Math.abs(prev)) * 100;
+}
+
 export function timeAgo(iso: string | null): string {
   if (!iso) return "never";
   const then = new Date(iso).getTime();

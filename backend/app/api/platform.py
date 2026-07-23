@@ -27,7 +27,13 @@ def _redirect_uri(platform: str) -> str:
 
 
 @router.get("/platforms")
-def platforms():
+def platforms(user: User = Depends(get_current_user)):
+    """Which platforms majra can connect to, and how each authenticates.
+
+    Gated behind auth: it discloses internal connector capability details that
+    an anonymous caller has no need to see (see SPEC §2). The Connections page,
+    its only consumer, is already behind a session.
+    """
     return {
         "platforms": [
             {"platform": p, "auth_kind": c.auth_kind}

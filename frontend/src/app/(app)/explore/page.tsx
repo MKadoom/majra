@@ -25,11 +25,41 @@ import {
   platformColor,
   qs,
 } from "@/lib/api";
-import { daysAgo, isoDate } from "@/lib/format";
+import { daysAgo, isoDate, pctDelta, prevWindow } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
 import type { GtmSnapshot, MetricPage, MetricRow } from "@/lib/types";
 
 const DATASETS: Dataset[] = ["ads", "web", "social", "tags"];
+
+/**
+ * A small up/down badge showing change vs the previous equal-length period.
+ * `null` (no baseline — e.g. a brand-new account with no prior window) renders
+ * nothing rather than a misleading "0%". Up is good for most measures; callers
+ * that invert that (a drop in CPA is good) can pass `invert`.
+ */
+function DeltaBadge({
+  curr,
+  prev,
+  invert = false,
+}: {
+  curr: number | null | undefined;
+  prev: number | null | undefined;
+  invert?: boolean;
+}) {
+  const { t, measure } = useLocale();
+  const pct = pctDelta(curr, prev);
+  if (pct === null) return null;
+  const up = pct > 0;
+  const good = invert ? !up : up;
+  const cls = good ? "text-good" : "text-bad";
+  const label =
+    pct === 0
+      ? t("explore.deltaFlat")
+      : up
+        ? t("explore.deltaUp", { pct: Math.abs(pct).toFixed(0) })
+        : t("explore.deltaDown", { pct: Math.abs(pct).toFixed(0) });
+  return <span className={`ms-2 text-xs font-medium ${cls}`}>{label}</span>;
+}
 
 export default function ExplorePage() {
   const { t, m: mLabel, g: gLabel, p: pName, measure, dir } = useLocale();
@@ -40,11 +70,13 @@ export default function ExplorePage() {
   const [groupBy, setGroupBy] = useState<string[]>([]);
 
   const [totals, setTotals] = useState<MetricRow | null>(null);
+  const [prevTotals, setPrevTotals] = useState<MetricRow | null>(null);
   const [series, setSeries] = useState<MetricRow[]>([]);
   const [table, setTable] = useState<MetricRow[]>([]);
   const [tags, setTags] = useState<GtmSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [compare, setCompare] = useState(false);
 
   const measures = dataset === "tags" ? [] : DATASET_MEASURES[dataset];
   const groupOptions = dataset === "tags" ? [] : DATASET_GROUPS[dataset];
@@ -92,6 +124,25 @@ export default function ExplorePage() {
       setTotals(totalsRes.data[0] ?? null);
       setSeries(seriesRes.data);
       setTable(tableRes.data);
+
+      // Period-over-period: the immediately preceding window of equal length.
+      // Previous spend means nothing without a baseline, so we fetch it only
+      // when the person asks for it — it's a second (cheap) query, not free.
+      if (compare) {
+        const { prevFrom, prevTo } = prevWindow(from, to);
+        const prevRes = await api
+          .get<MetricPage>(
+            `${endpoint}${qs({
+              ...base,
+              date_from: prevFrom,
+              date_to: prevTo,
+            })}`,
+          )
+          .catch(() => null);
+        setPrevTotals(prevRes?.data[0] ?? null);
+      } else {
+        setPrevTotals(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("explore.loadFailed"));
     } finally {
@@ -204,6 +255,15 @@ export default function ExplorePage() {
               onChange={(e) => setTo(e.target.value)}
             />
           </div>
+          <label className="mb-0.5 flex cursor-pointer items-end gap-2 pb-1.5 text-sm text-muted">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-accent"
+              checked={compare}
+              onChange={(e) => setCompare(e.target.checked)}
+            />
+            {t("explore.compare")}
+          </label>
         </div>
       </header>
 
@@ -295,7 +355,16 @@ export default function ExplorePage() {
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {measures.slice(0, PRIMARY_MEASURES).map((m) => (
                   <div key={m} className="panel p-4">
-                    <p className="eyebrow">{mLabel(m)}</p>
+                    <p className="eyebrow flex items-center">
+                      {mLabel(m)}
+                      {compare && prevTotals && (
+                        <DeltaBadge
+                          curr={totals ? Number(totals[m]) : null}
+                          prev={Number(prevTotals[m])}
+                          invert={["cpa", "cpc", "cpm"].includes(m)}
+                        />
+                      )}
+                    </p>
                     <p className="num mt-1.5 text-xl">
                       {totals ? measure(m, totals[m]) : "—"}
                     </p>
@@ -310,7 +379,16 @@ export default function ExplorePage() {
                       key={m}
                       className="flex items-baseline justify-between gap-2"
                     >
-                      <span className="eyebrow truncate">{mLabel(m)}</span>
+                      <span className="eyebrow flex items-center truncate">
+                        {mLabel(m)}
+                        {compare && prevTotals && (
+                          <DeltaBadge
+                            curr={totals ? Number(totals[m]) : null}
+                            prev={Number(prevTotals[m])}
+                            invert={["cpa", "cpc", "cpm"].includes(m)}
+                          />
+                        )}
+                      </span>
                       <span className="num text-sm">
                         {totals ? measure(m, totals[m]) : "—"}
                       </span>
