@@ -57,6 +57,10 @@ def _mock_snapchat():
     respx.get(f"{API}/adaccounts/acc1/adsquads").mock(return_value=httpx.Response(
         200, json={"adsquads": [{"adsquad": {"id": "sq1", "name": "SSquad",
                                              "campaign_id": "c1", "status": "ACTIVE"}}]}))
+    # The connector fetches the account itself (for its timezone) before stats.
+    respx.get(f"{API}/adaccounts/acc1").mock(return_value=httpx.Response(
+        200, json={"adaccounts": [{"adaccount": {"id": "acc1", "name": "SAcc",
+                                                 "timezone": "Asia/Riyadh"}}]}))
     respx.get(f"{API}/adaccounts/acc1/ads").mock(return_value=httpx.Response(
         200, json={"ads": [{"ad": {"id": "a1", "name": "SAd",
                                    "ad_squad_id": "sq1", "status": "ACTIVE"}}]}))
