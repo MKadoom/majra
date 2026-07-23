@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:units": "tsc src/lib/format.ts src/lib/format.test.ts --outDir .tmptest --module esnext --target es2020 --moduleResolution bundler --esModuleInterop --skipLibCheck && node --test .tmptest/format.test.js; code=$?; rm -rf .tmptest; exit $code"
   },
   "dependencies": {
     "next": "14.2.35",
