@@ -18,6 +18,8 @@ os.environ["MAJRA_SECRET_KEY"] = "test-secret"
 os.environ["MAJRA_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 os.environ["MAJRA_META_APP_ID"] = "123456"
 os.environ["MAJRA_META_APP_SECRET"] = "shh"
+os.environ["MAJRA_TIKTOK_APP_ID"] = "123456"
+os.environ["MAJRA_TIKTOK_APP_SECRET"] = "shh"
 os.environ["MAJRA_PUBLIC_BASE_URL"] = "http://testserver"
 # Rate limiting is off by default in tests (it would throttle the suite);
 # test_hardening switches it on for the cases that assert it works.
