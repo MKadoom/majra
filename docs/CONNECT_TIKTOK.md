@@ -5,12 +5,19 @@ of a TikTok for Business developer app plus a browser authorization. Everything
 below happens on **your** TikTok account — majra only needs the resulting App ID,
 App Secret, and one authorize click.
 
-## 1. Create the developer app
-1. Go to <https://developers.tiktok.com> and sign in with your TikTok for
-   Business account. (The advertiser account you want to report on must be
-   reachable from this login — this is what the earlier email verification
-   unblocked.)
-2. **Create an app**, then **add the "Marketing API" product** to it.
+## 1. Create the developer app (Marketing API — the right portal)
+> ⚠️ Use the **TikTok for Business / Marketing API** developer portal, **not**
+> `developers.tiktok.com`. The latter only offers consumer products (Login Kit,
+> Share Kit, Content Posting, Webhooks, Data Portability, Local Service) — there
+> is **no Ads/Marketing product** there, so an app created on it cannot call the
+> `business-api.tiktok.com` endpoints majra uses.
+
+1. Go to <https://business-api.tiktok.com/portal> and register / sign in as a
+   **TikTok for Business developer** (this is a different registration from the
+   consumer developer portal). The advertiser account you want to report on must
+   be reachable from this login — this is what the earlier email fix unblocked.
+2. **Create a Marketing API app.** Give it a name and the required business
+   details (category, description, Terms of Service URL, Privacy Policy URL).
 3. From the app's page, copy its **App ID** and **App Secret**. Treat the Secret
    like a password — never commit it or paste it into a chat.
 
