@@ -25,7 +25,7 @@ cannot spend.
 
 ## Setup
 
-**1. Create an API key** in majra → **Settings → API keys**. Copy it (`mjr_…`),
+**1. Create an API key** in majra → **Settings → API keys**. Copy it (`mk_…`),
 it is shown once.
 
 **2. Install:**
@@ -45,7 +45,7 @@ pip install -r mcp/requirements.txt
       "args": ["/absolute/path/to/majra/mcp/majra_mcp.py"],
       "env": {
         "MAJRA_URL": "https://your-majra.up.railway.app",
-        "MAJRA_API_KEY": "mjr_..."
+        "MAJRA_API_KEY": "mk_..."
       }
     }
   }

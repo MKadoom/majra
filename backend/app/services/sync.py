@@ -90,8 +90,6 @@ def _sync_entities(db: Session, connector, tokens: TokenSet, acc: Account):
     """Fetch campaign/adset/ad entities and return external-id → internal-id maps."""
     camp_map: dict[str, int] = {}
     adset_map: dict[str, int] = {}
-    camp_map: dict[str, int] = {}
-    adset_map: dict[str, int] = {}
     ad_map: dict[str, int] = {}
     adset_campaign: dict[int, int] = {}          # adset_id -> campaign_id
     ad_parents: dict[str, tuple[int | None, int | None]] = {}  # ad_ext -> (adset_id, campaign_id)

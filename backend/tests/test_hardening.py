@@ -5,7 +5,6 @@ rate limiter actually returns 429, that the Prometheus endpoint isn't sitting on
 top of the data API, and that CORS is locked shut by default.
 """
 import pytest
-from fastapi.testclient import TestClient
 
 from app.core import config
 from app.core.limiter import limiter

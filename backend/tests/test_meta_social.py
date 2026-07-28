@@ -9,7 +9,9 @@ import respx
 from sqlalchemy import func, select
 
 from app.connectors.meta_social.connector import (
-    GRAPH, IG_METRICS, PAGE_METRICS, MetaSocialConnector,
+    GRAPH,
+    PAGE_METRICS,
+    MetaSocialConnector,
 )
 from app.core.security import encrypt_tokens
 from app.models import Connection, FactSocialPerformance, RawMetaSocial

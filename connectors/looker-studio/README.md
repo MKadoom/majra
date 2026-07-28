@@ -33,7 +33,7 @@ party — Looker Studio calls your majra directly.
 | Field | Value |
 |---|---|
 | **Username** | your majra URL, e.g. `https://your-majra.up.railway.app` |
-| **Password / token** | a majra API key (`mjr_…`) from **Settings → API keys** |
+| **Password / token** | a majra API key (`mk_…`) from **Settings → API keys** |
 
 Both are checked at connect time against `/v1/accounts`, so a wrong URL or an
 expired key fails immediately rather than producing an empty chart later.

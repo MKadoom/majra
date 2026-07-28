@@ -17,7 +17,7 @@ Setup (Claude Desktop / any MCP client):
           "args": ["/absolute/path/to/majra/mcp/majra_mcp.py"],
           "env": {
             "MAJRA_URL": "https://your-majra.up.railway.app",
-            "MAJRA_API_KEY": "mjr_..."
+            "MAJRA_API_KEY": "mk_..."
           }
         }
       }

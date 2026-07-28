@@ -2,7 +2,7 @@
 Google Ads REST API, plus a blended Meta+Google /metrics query (the Phase-4
 proof that two platforms answer from one query with no core changes)."""
 import json
-from datetime import date, timedelta
+from datetime import date
 
 import httpx
 import pytest

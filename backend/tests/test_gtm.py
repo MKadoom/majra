@@ -10,8 +10,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import func, select
 
 from app.connectors.base import PermanentError
-from app.connectors.gtm.connector import API, GTMConnector
 from app.connectors.google_sa import TOKEN_URI
+from app.connectors.gtm.connector import API, GTMConnector
 from app.models import GtmResource, RawGtmSnapshot
 
 _KEY_PEM = (

@@ -3,7 +3,7 @@
 Proves: raw storage, dim upserts, pagination handling, idempotent re-sync
 (delete+insert), watermark logic, blended metrics query, schedule ticking.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -12,7 +12,12 @@ from sqlalchemy import func, select
 
 from app.core.security import encrypt_tokens
 from app.models import (
-    Account, Connection, FactAdPerformance, RawMetaInsights, Schedule, SyncJob,
+    Account,
+    Connection,
+    FactAdPerformance,
+    RawMetaInsights,
+    Schedule,
+    SyncJob,
 )
 from app.services.schedules import tick_schedules
 from app.services.sync import incremental_range, watermark
@@ -201,7 +206,7 @@ def test_schedule_tick_creates_backfill_then_incremental(db, connection):
     db.add(s)
     db.commit()
 
-    now = datetime(2026, 7, 7, 3, 10, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 7, 3, 10, tzinfo=UTC)
 
     # no data yet → backfill chunks (60 days ≈ 2-3 month chunks)
     created = tick_schedules(db, now=now)

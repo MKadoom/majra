@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import io
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 import httpx
@@ -177,13 +177,13 @@ def test_report_window_rolls_and_due_logic():
 
     r = SavedReport(name="x", dataset="ads", cadence="daily", hour_utc=6,
                     enabled=True, params={}, destination={})
-    assert is_due(r, datetime(2026, 7, 10, 6, 5, tzinfo=timezone.utc)) is True
-    assert is_due(r, datetime(2026, 7, 10, 9, 5, tzinfo=timezone.utc)) is False
-    r.last_run_at = datetime(2026, 7, 10, 6, 5, tzinfo=timezone.utc)
-    assert is_due(r, datetime(2026, 7, 10, 6, 30, tzinfo=timezone.utc)) is False
-    assert is_due(r, datetime(2026, 7, 11, 6, 5, tzinfo=timezone.utc)) is True
+    assert is_due(r, datetime(2026, 7, 10, 6, 5, tzinfo=UTC)) is True
+    assert is_due(r, datetime(2026, 7, 10, 9, 5, tzinfo=UTC)) is False
+    r.last_run_at = datetime(2026, 7, 10, 6, 5, tzinfo=UTC)
+    assert is_due(r, datetime(2026, 7, 10, 6, 30, tzinfo=UTC)) is False
+    assert is_due(r, datetime(2026, 7, 11, 6, 5, tzinfo=UTC)) is True
     r.enabled = False
-    assert is_due(r, datetime(2026, 7, 11, 6, 5, tzinfo=timezone.utc)) is False
+    assert is_due(r, datetime(2026, 7, 11, 6, 5, tzinfo=UTC)) is False
 
 
 @respx.mock
@@ -332,7 +332,7 @@ def test_beat_runs_due_reports_only(auth_client, db, seeded):
         "cadence": "daily", "hour_utc": 9,
     })
 
-    ran = run_due_reports(db, now=datetime(2026, 7, 12, 6, 3, tzinfo=timezone.utc))
+    ran = run_due_reports(db, now=datetime(2026, 7, 12, 6, 3, tzinfo=UTC))
     assert len(ran) == 1
 
     names = {r.name: r.last_status for r in db.scalars(select(SavedReport))}

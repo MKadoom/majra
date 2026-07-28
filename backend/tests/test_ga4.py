@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from app.connectors.base import PermanentError
 from app.connectors.ga4.connector import DATA_API, GA4Connector
-from app.models import Account, Connection, FactWebPerformance, RawGA4Report
+from app.models import FactWebPerformance, RawGA4Report
 from app.services.sync import watermark
 
 TOKEN_URI = "https://oauth2.googleapis.com/token"
