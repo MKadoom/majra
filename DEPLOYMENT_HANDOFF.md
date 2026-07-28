@@ -54,7 +54,7 @@ the platform credentials; frontend only has `MAJRA_API_URL`).
 | Meta      | `majra` (App ID 1567098908090799) | ✅ created, connected | Still in **Development mode** → low API rate limits. Privacy/terms URLs set → ready for App Review. |
 | Snapchat  | `majra` OAuth app under **جمعية الثريا للمكفوفين بجازان** org | ✅ created, connected, syncing | Client ID b84d46ac-85aa-431e-943b-5caf2190349a |
 | Google Ads| —             | ⏸ blocked | Needs 2-Step Verification (MFA) enabled on your Google account before Google Cloud Console is accessible. |
-| TikTok    | —             | ⏸ blocked | Needs the developer-registration form completed (was waiting on your work email). |
+| TikTok    | `Majra` (Marketing API app on business-api.tiktok.com) | ⏳ pending review | Developer registration completed 2026-07-28; Marketing API app `Majra` created with redirect URL `https://frontend-production-d57f0.up.railway.app/connect/tiktok/callback` and scopes Ad Account Management + Ads Management + Reporting. Verification **Pending** (App ID/Secret issue after approval, ~3 days). Then set `MAJRA_TIKTOK_APP_ID`/`MAJRA_TIKTOK_APP_SECRET` in Railway and authorize via `/connect/tiktok`. See `docs/CONNECT_TIKTOK.md`. |
 
 All secret values are stored only in Railway variables (not in this file).
 
