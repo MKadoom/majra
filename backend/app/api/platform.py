@@ -55,7 +55,12 @@ def connect(platform: str, user: User = Depends(get_current_user)):
                  "use POST /connections/service-account"
         )
     state = create_oauth_state(user.id, platform)
-    return {"auth_url": connector.auth_url(state, _redirect_uri(platform))}
+    try:
+        auth_url = connector.auth_url(state, _redirect_uri(platform))
+    except PermanentError as exc:
+        # e.g. the platform's app credentials aren't configured on this instance.
+        raise HTTPException(400, str(exc)) from exc
+    return {"auth_url": auth_url}
 
 
 @router.get("/connect/{platform}/callback", response_class=HTMLResponse)

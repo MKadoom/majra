@@ -6,9 +6,25 @@ import pytest
 import respx
 from sqlalchemy import func, select
 
+from app.connectors.base import PermanentError
 from app.connectors.tiktok.connector import BASE, TikTokConnector
 from app.core.security import encrypt_tokens
 from app.models import Connection, FactAdPerformance, RawTikTokReport
+
+
+def test_tiktok_auth_url_requires_config():
+    """Without app credentials, starting the OAuth flow fails with an actionable
+    message rather than emitting a broken consent URL (empty app_id)."""
+    c = TikTokConnector()
+    c._cfg.tiktok_app_id = ""
+    c._cfg.tiktok_app_secret = ""
+    with pytest.raises(PermanentError, match="not configured"):
+        c.auth_url("state", "https://example.test/connect/tiktok/callback")
+
+    c._cfg.tiktok_app_id = "app123"
+    c._cfg.tiktok_app_secret = "shh"
+    url = c.auth_url("state", "https://example.test/connect/tiktok/callback")
+    assert "app_id=app123" in url and "state=state" in url
 
 
 def _row(day, spend, imp, clicks, conv, vv):

@@ -39,8 +39,20 @@ class TikTokConnector(BaseConnector):
     def __init__(self) -> None:
         self._cfg = TikTokSettings()
 
+    def _require_config(self) -> None:
+        """Fail fast with an actionable message when the TikTok for Business app
+        credentials aren't set, instead of building a broken consent URL / token
+        request that only fails (opaquely) at TikTok's side."""
+        if not (self._cfg.tiktok_app_id and self._cfg.tiktok_app_secret):
+            raise PermanentError(
+                "tiktok: not configured — set MAJRA_TIKTOK_APP_ID and "
+                "MAJRA_TIKTOK_APP_SECRET (from your TikTok for Business app) "
+                "and restart the service"
+            )
+
     # ------------------------------------------------------------- auth
     def auth_url(self, state: str, redirect_uri: str) -> str:
+        self._require_config()
         q = urlencode(
             {"app_id": self._cfg.tiktok_app_id, "state": state, "redirect_uri": redirect_uri}
         )
@@ -49,6 +61,7 @@ class TikTokConnector(BaseConnector):
     def exchange_code(self, code: str, redirect_uri: str) -> TokenSet:
         # TikTok returns `auth_code` on the callback; the API layer passes it here
         # as `code`. The token exchange does not use redirect_uri.
+        self._require_config()
         data = self._post(
             f"{BASE}/oauth2/access_token/",
             {
@@ -66,6 +79,7 @@ class TikTokConnector(BaseConnector):
 
     # -------------------------------------------------------- discovery
     def fetch_accounts(self, tokens: TokenSet) -> list[AccountInfo]:
+        self._require_config()
         listing = self._get(
             f"{BASE}/oauth2/advertiser/get/",
             {"app_id": self._cfg.tiktok_app_id, "secret": self._cfg.tiktok_app_secret},
