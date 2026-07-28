@@ -236,3 +236,67 @@ def test_schedule_tick_creates_backfill_then_incremental(db, connection):
     assert j.kind == "scheduled"
     assert j.date_from == date(2026, 7, 6) - timedelta(days=7)  # restatement window
     assert j.date_to == date(2026, 7, 7)
+
+
+def _mock_graph_two_accounts():
+    """Two ad accounts (act_1, act_2), each with one campaign/adset/ad and one
+    insight row — for exercising the per-connection account allow-list."""
+    respx.get(f"{GRAPH}/me/adaccounts").mock(
+        return_value=httpx.Response(200, json={"data": [
+            {"id": "act_1", "name": "Main SAR", "currency": "SAR",
+             "timezone_name": "Asia/Riyadh"},
+            {"id": "act_2", "name": "Other USD", "currency": "USD",
+             "timezone_name": "Asia/Bahrain"},
+        ]})
+    )
+    for acc in ("act_1", "act_2"):
+        respx.get(f"{GRAPH}/{acc}/campaigns").mock(return_value=httpx.Response(
+            200, json={"data": [{"id": f"c_{acc}", "name": "Camp",
+                                 "status": "ACTIVE", "objective": "OUTCOME_SALES"}]}))
+        respx.get(f"{GRAPH}/{acc}/adsets").mock(return_value=httpx.Response(
+            200, json={"data": [{"id": f"s_{acc}", "name": "Set",
+                                 "status": "ACTIVE", "campaign_id": f"c_{acc}"}]}))
+        respx.get(f"{GRAPH}/{acc}/ads").mock(return_value=httpx.Response(
+            200, json={"data": [{"id": f"a_{acc}", "name": "Ad",
+                                 "status": "ACTIVE", "adset_id": f"s_{acc}"}]}))
+        respx.get(f"{GRAPH}/{acc}/insights").mock(return_value=httpx.Response(
+            200, json={"data": [{
+                "date_start": "2026-06-01",
+                "campaign_id": f"c_{acc}", "campaign_name": "Camp",
+                "adset_id": f"s_{acc}", "adset_name": "Set",
+                "ad_id": f"a_{acc}", "ad_name": "Ad",
+                "spend": "10.0", "impressions": "100", "clicks": "5",
+                "actions": [{"action_type": "omni_purchase", "value": "1"}],
+                "action_values": [{"action_type": "omni_purchase", "value": "50"}],
+            }]}))
+
+
+@respx.mock
+def test_synced_account_allowlist_restricts_sync(auth_client, db, connection):
+    """A connection can be pinned to a subset of its accounts; only those sync."""
+    _mock_graph_two_accounts()
+
+    r = auth_client.put(
+        f"/connections/{connection.id}/synced-accounts",
+        json={"account_external_ids": ["act_2"]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["synced_account_ids"] == ["act_2"]
+
+    body = {"connection_id": connection.id, "date_from": "2026-06-01",
+            "date_to": "2026-06-01", "breakdown": "none"}
+    job = auth_client.post("/syncs", json=body).json()
+    assert job["status"] == "success", job.get("error")
+    assert job["stats"]["accounts"] == 1  # only the allow-listed account synced
+
+    facts = db.scalars(select(FactAdPerformance)).all()
+    assert len(facts) == 1
+    act2 = db.scalar(select(Account).where(Account.external_id == "act_2"))
+    assert {f.account_id for f in facts} == {act2.id}
+
+    # clearing the allow-list restores "sync all" (stored as NULL)
+    r2 = auth_client.put(
+        f"/connections/{connection.id}/synced-accounts",
+        json={"account_external_ids": []},
+    )
+    assert r2.json()["synced_account_ids"] is None

@@ -116,10 +116,42 @@ def list_connections(
             "platform": c.platform,
             "name": c.name,
             "status": c.status,
+            "synced_account_ids": c.synced_account_ids,
             "created_at": c.created_at,
         }
         for c in rows
     ]
+
+
+class SyncedAccounts(BaseModel):
+    # Account external_ids to restrict this connection's syncs to. Empty list
+    # clears the allow-list (sync every visible account again).
+    account_external_ids: list[str]
+
+
+@router.put("/connections/{connection_id}/synced-accounts")
+def set_synced_accounts(
+    connection_id: int,
+    body: SyncedAccounts,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Restrict which ad accounts a connection syncs (or clear the restriction).
+
+    Useful when a token exposes many accounts but only some matter: focusing the
+    sync conserves the platform's per-user API rate budget and drops read-only /
+    empty accounts from the warehouse.
+    """
+    conn = db.get(Connection, connection_id)
+    if conn is None or conn.user_id != user.id:
+        raise HTTPException(404, "connection not found")
+    conn.synced_account_ids = body.account_external_ids or None
+    db.commit()
+    return {
+        "id": conn.id,
+        "platform": conn.platform,
+        "synced_account_ids": conn.synced_account_ids,
+    }
 
 
 class ServiceAccountConnection(BaseModel):

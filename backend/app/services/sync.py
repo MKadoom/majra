@@ -453,6 +453,13 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
         tokens = TokenSet.from_dict(decrypt_tokens(conn.encrypted_tokens))
 
         accounts = _upsert_accounts(db, conn, connector.fetch_accounts(tokens))
+        # Optional per-connection allow-list: sync only the chosen accounts. This
+        # conserves the platform's per-user API rate budget (e.g. Meta dev-mode
+        # limits) by not spending calls on read-only / empty accounts. NULL or
+        # empty means "all", so existing connections are unaffected.
+        wanted = set(conn.synced_account_ids or [])
+        if wanted:
+            accounts = [a for a in accounts if a.external_id in wanted]
         _log(db, job, "accounts.synced", count=len(accounts))
 
         handler = DATASET_HANDLERS.get(connector.dataset)

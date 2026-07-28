@@ -165,7 +165,7 @@ Derived metrics are null when their denominator is zero.
 ## §6 App tables (schema `app`, `app/models/app_models.py`)
     users(id, email UNIQUE, password_hash, created_at)
     connections(id, user_id, platform, name, encrypted_tokens BYTEA, status,
-                created_at)
+                synced_account_ids JSONB?, created_at)
     schedules(id, connection_id, cadence, hour_utc, breakdowns JSONB,
               restatement_days, backfill_days, enabled, last_enqueued_at)
     sync_jobs(id, connection_id, kind, date_from, date_to, breakdown, status,

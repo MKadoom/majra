@@ -41,6 +41,12 @@ class Connection(Base):
     name: Mapped[str] = mapped_column(String(200))
     encrypted_tokens: Mapped[bytes] = mapped_column(LargeBinary)
     status: Mapped[str] = mapped_column(String(30), default="active")  # active|needs_reauth|disabled
+    # Optional allow-list of account external_ids this connection should sync.
+    # NULL / empty = sync every account the token can see (default, backward
+    # compatible). Used to focus a connection on the accounts that matter and
+    # skip read-only / empty ones — which also conserves a platform's per-user
+    # API rate budget (e.g. Meta Development-mode limits).
+    synced_account_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped["User"] = relationship()
