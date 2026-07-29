@@ -5,6 +5,7 @@ from celery import Celery, Task
 from app.connectors.base import TransientError
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.services.freshness import stale_connections
 from app.services.reports import run_due_reports
 from app.services.schedules import tick_schedules
 from app.services.sync import run_sync
@@ -25,6 +26,12 @@ celery_app.conf.update(
         "run-saved-reports": {
             "task": "app.workers.tasks.run_reports_task",
             "schedule": 600.0,
+        },
+        # Freshness sweep once a day: alert on any connection whose data has
+        # gone stale (source stopped, or sync failing).
+        "check-freshness": {
+            "task": "app.workers.tasks.check_freshness_task",
+            "schedule": 86400.0,
         },
     },
     timezone="UTC",
@@ -87,5 +94,32 @@ def run_reports_task() -> int:
     db = SessionLocal()
     try:
         return len(run_due_reports(db))
+    finally:
+        db.close()
+
+
+def _freshness_alert(stale: list[dict]) -> None:
+    if not settings.alert_webhook_url or not stale:
+        return
+    try:
+        httpx.post(
+            settings.alert_webhook_url,
+            json={"event": "data.stale", "connections": stale},
+            timeout=10,
+        )
+    except httpx.HTTPError:
+        log.warning("alert.webhook_failed", event="data.stale")
+
+
+@celery_app.task
+def check_freshness_task() -> int:
+    db = SessionLocal()
+    try:
+        stale = stale_connections(db)
+        if stale:
+            log.warning("data.stale", count=len(stale),
+                        connections=[s["connection_id"] for s in stale])
+            _freshness_alert(stale)
+        return len(stale)
     finally:
         db.close()

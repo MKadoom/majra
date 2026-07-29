@@ -325,3 +325,27 @@ def test_metrics_currency_normalization(auth_client, db, connection):
         "date_from": "2026-06-01", "date_to": "2026-06-01", "currency": "USD"}).json()
     assert usd["currency"] == "USD"
     assert usd["data"][0]["spend"] == 12.5
+
+
+def test_freshness_flags_stale_connection(db, connection):
+    """A connection whose newest data is well behind yesterday reads as stale."""
+    from app.services.freshness import freshness_report
+
+    acc = Account(connection_id=connection.id, platform="meta",
+                  external_id="act_x", name="X")
+    db.add(acc)
+    db.flush()
+    db.add(FactAdPerformance(
+        date=date(2026, 6, 1), platform="meta", account_id=acc.id, breakdown="none",
+        spend=1, currency="USD", impressions=1, clicks=0, conversions=0,
+        conversion_value=0, video_views=0, leads=0, purchases=0))
+    db.commit()
+
+    stale = freshness_report(db, today=date(2026, 6, 15), grace_days=2)
+    row = next(r for r in stale if r["connection_id"] == connection.id)
+    assert row["last_date"] == "2026-06-01" and row["days_stale"] == 13
+    assert row["stale"] is True
+
+    fresh = freshness_report(db, today=date(2026, 6, 3), grace_days=2)
+    row2 = next(r for r in fresh if r["connection_id"] == connection.id)
+    assert row2["stale"] is False

@@ -14,6 +14,7 @@ from app.core.db import get_db
 from app.models import Connection, FxRate, Schedule, SyncJob, SyncLog, User
 from app.services import exports
 from app.services.datasets import run_dataset_query
+from app.services.freshness import freshness_report
 from app.services.metrics import query_metrics
 from app.services.social_metrics import query_social_metrics
 from app.services.web_metrics import query_web_metrics
@@ -230,6 +231,16 @@ def metrics(
         page_size=page_size,
         reporting_currency=currency,
     )
+
+
+# ---------------------------------------------------------------- freshness
+@router.get("/freshness")
+def freshness(
+    user: User = Depends(get_read_principal), db: Session = Depends(get_db)
+):
+    """Per-connection data freshness: newest synced day, days behind, and whether
+    it has gone stale (stopped delivering)."""
+    return freshness_report(db)
 
 
 # ------------------------------------------------------------------- fx rates
