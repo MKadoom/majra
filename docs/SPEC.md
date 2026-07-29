@@ -100,7 +100,10 @@ RULES:
 - Derived metrics (ctr, cpc, cpm, cpa, roas) are computed after aggregation in
   `app/services/metrics.py`, never stored.
 - `spend` stays in the account's currency; `currency` travels with every fact
-  row. Blended cross-currency totals are the caller's concern (v2: an fx table).
+  row. Blended cross-currency totals: `/metrics?currency=USD` folds each row's
+  spend/value by `rate_to_usd[row]/rate_to_usd[reporting]` from the `app.fx_rates`
+  table (owner-supplied via `PUT /fx-rates`; USD implicitly 1.0). Without the
+  param, raw per-currency sums are returned unchanged.
 - `date` is the platform-reported day in the account's own timezone — that is
   how every platform reports dailies. Do not convert.
 - Month partitioning of the fact table is a v2 migration; not needed at current
@@ -175,6 +178,7 @@ Derived metrics are null when their denominator is zero.
              created_at, last_used_at, revoked_at)
     saved_reports(id, user_id, name, dataset, params JSONB, destination JSONB,
                   cadence, hour_utc, enabled, last_run_at, last_status, last_error)
+    fx_rates(id, currency UNIQUE, rate_to_usd NUMERIC, updated_at)
 
 `cadence`: `hourly | every_3h | daily | weekly | manual`.
 `status` on connections: `active | needs_reauth | disabled`.

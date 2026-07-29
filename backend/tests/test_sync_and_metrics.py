@@ -300,3 +300,28 @@ def test_synced_account_allowlist_restricts_sync(auth_client, db, connection):
         json={"account_external_ids": []},
     )
     assert r2.json()["synced_account_ids"] is None
+
+
+@respx.mock
+def test_metrics_currency_normalization(auth_client, db, connection):
+    """spend/value from mixed-currency accounts blend into a reporting currency."""
+    _mock_graph_two_accounts()  # act_1 SAR spend 10, act_2 USD spend 10
+    body = {"connection_id": connection.id, "date_from": "2026-06-01",
+            "date_to": "2026-06-01", "breakdown": "none"}
+    assert auth_client.post("/syncs", json=body).json()["status"] == "success"
+
+    # 1 SAR = 0.25 USD
+    assert auth_client.put(
+        "/fx-rates", json={"currency": "SAR", "rate_to_usd": 0.25}
+    ).status_code == 200
+
+    # raw (mixed currencies, not meaningful but unchanged): 10 + 10 = 20
+    raw = auth_client.get("/metrics", params={
+        "date_from": "2026-06-01", "date_to": "2026-06-01"}).json()
+    assert raw["data"][0]["spend"] == 20.0 and raw["currency"] is None
+
+    # blended into USD: 10 SAR -> 2.5 + 10 USD -> 10 = 12.5
+    usd = auth_client.get("/metrics", params={
+        "date_from": "2026-06-01", "date_to": "2026-06-01", "currency": "USD"}).json()
+    assert usd["currency"] == "USD"
+    assert usd["data"][0]["spend"] == 12.5

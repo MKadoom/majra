@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     Text,
 )
@@ -157,3 +158,21 @@ class SavedReport(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped["User"] = relationship()
+
+
+class FxRate(Base):
+    """Exchange rate used to blend spend/value across account currencies into a
+    single reporting currency. `rate_to_usd` is the USD value of one unit of
+    `currency` (e.g. SAR ≈ 0.2667). Converting an amount from currency A to
+    reporting currency R is amount * rate_to_usd[A] / rate_to_usd[R]. Rates are
+    owner-supplied (a v2 auto-fetch could fill them); USD is implicitly 1.0."""
+
+    __tablename__ = "fx_rates"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    currency: Mapped[str] = mapped_column(String(8), unique=True, index=True)  # ISO 4217
+    rate_to_usd: Mapped[float] = mapped_column(Numeric(18, 8))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

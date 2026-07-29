@@ -11,7 +11,7 @@ from app.api.keys import get_read_principal
 from app.connectors.base import BREAKDOWN_SETS
 from app.core.config import settings
 from app.core.db import get_db
-from app.models import Connection, Schedule, SyncJob, SyncLog, User
+from app.models import Connection, FxRate, Schedule, SyncJob, SyncLog, User
 from app.services import exports
 from app.services.datasets import run_dataset_query
 from app.services.metrics import query_metrics
@@ -208,6 +208,9 @@ def metrics(
     sort: str | None = None,
     page: int = 1,
     page_size: int = Query(100, le=1000),
+    currency: str | None = Query(
+        None, description="Blend spend/value into this reporting currency (ISO 4217)"
+    ),
     user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
@@ -225,7 +228,45 @@ def metrics(
         sort=sort,
         page=page,
         page_size=page_size,
+        reporting_currency=currency,
     )
+
+
+# ------------------------------------------------------------------- fx rates
+class FxRateIn(BaseModel):
+    currency: str = Field(min_length=3, max_length=8)  # ISO 4217, e.g. "SAR"
+    rate_to_usd: float = Field(gt=0, description="USD value of 1 unit, e.g. 0.2667")
+
+
+@router.get("/fx-rates")
+def list_fx_rates(
+    user: User = Depends(get_read_principal), db: Session = Depends(get_db)
+):
+    rows = db.scalars(select(FxRate).order_by(FxRate.currency))
+    return [
+        {"currency": r.currency, "rate_to_usd": float(r.rate_to_usd),
+         "updated_at": r.updated_at}
+        for r in rows
+    ]
+
+
+@router.put("/fx-rates")
+def set_fx_rate(
+    body: FxRateIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upsert the exchange rate for one currency (owner-only). USD is implicitly
+    1.0 and never needs a row."""
+    ccy = body.currency.upper()
+    row = db.scalar(select(FxRate).where(FxRate.currency == ccy))
+    if row is None:
+        row = FxRate(currency=ccy, rate_to_usd=body.rate_to_usd)
+        db.add(row)
+    else:
+        row.rate_to_usd = body.rate_to_usd
+    db.commit()
+    return {"currency": ccy, "rate_to_usd": float(row.rate_to_usd)}
 
 
 @router.get("/web-metrics")

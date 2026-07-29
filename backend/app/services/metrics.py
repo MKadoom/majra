@@ -7,10 +7,10 @@ double-counting trap described in SPEC §3.
 """
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.models import Account, Ad, Adset, Campaign
+from app.models import Account, Ad, Adset, Campaign, FxRate
 from app.models import FactAdPerformance as F
 
 GROUPABLE = {
@@ -62,14 +62,37 @@ def query_metrics(
     sort: str | None = None,
     page: int = 1,
     page_size: int = 100,
+    reporting_currency: str | None = None,
 ) -> dict:
     group_by = [g for g in (group_by or []) if g in GROUPABLE]
     # The 1000-row cap lives at the HTTP boundary (Query(le=1000)); exports
     # legitimately ask for far more, so the service itself doesn't clamp.
     page_size = max(1, page_size)
 
+    # Currency normalization (SPEC §3): spend/value are stored in each account's
+    # own currency. When a reporting currency is requested, multiply each row's
+    # monetary values by rate_to_usd[row]/rate_to_usd[reporting] inside the SUM,
+    # so a blended SAR+USD total is meaningful. Unknown currencies fall back to
+    # factor 1.0 (they pass through unconverted rather than vanish).
+    sums = dict(SUMS)
+    currency_out: str | None = None
+    if reporting_currency:
+        rates = {r.currency: float(r.rate_to_usd) for r in db.scalars(select(FxRate))}
+        rates.setdefault("USD", 1.0)
+        r_report = rates.get(reporting_currency)
+        if r_report:
+            factor = case(
+                *[(F.currency == ccy, rate / r_report) for ccy, rate in rates.items()],
+                else_=1.0,
+            )
+            sums["spend"] = func.coalesce(func.sum(F.spend * factor), 0)
+            sums["conversion_value"] = func.coalesce(
+                func.sum(F.conversion_value * factor), 0
+            )
+            currency_out = reporting_currency
+
     cols = [GROUPABLE[g] for g in group_by]
-    aggs = [expr.label(name) for name, expr in SUMS.items()]
+    aggs = [expr.label(name) for name, expr in sums.items()]
 
     stmt = select(*cols, *aggs).select_from(F)
     stmt = stmt.join(Account, Account.id == F.account_id)
@@ -124,4 +147,10 @@ def query_metrics(
             row[k] = int(row[k])
         data.append(_derive(row))
 
-    return {"data": data, "page": page, "page_size": page_size, "total": int(total or 0)}
+    return {
+        "data": data,
+        "page": page,
+        "page_size": page_size,
+        "total": int(total or 0),
+        "currency": currency_out,
+    }
