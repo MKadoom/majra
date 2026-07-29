@@ -200,9 +200,15 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
         # (e.g. Meta HTTP 500 on a disabled/broken account) must not sink the
         # whole sync. Skip that account and keep the healthy ones.
         try:
-            camp_map, adset_map, ad_map, ad_parents = _sync_entities(
-                db, connector, tokens, acc
-            )
+            if getattr(connector, "insights_carry_hierarchy", False):
+                # Insights self-describe the hierarchy (Meta): skip the entity
+                # walk and let _resolve_dims build dims lazily from insight rows.
+                # Fewer API calls → less rate-limit pressure.
+                camp_map, adset_map, ad_map, ad_parents = {}, {}, {}, {}
+            else:
+                camp_map, adset_map, ad_map, ad_parents = _sync_entities(
+                    db, connector, tokens, acc
+                )
             fetched = 0
             for raw in connector.fetch_insights(
                 tokens, acc.external_id, job.date_from, job.date_to, job.breakdown

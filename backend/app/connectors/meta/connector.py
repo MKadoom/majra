@@ -54,6 +54,9 @@ BREAKDOWN_PARAMS = {
 class MetaConnector(BaseConnector):
     platform = "meta"
     raw_model = RawMetaInsights
+    # Meta insight rows include campaign/adset/ad ids + names, so the engine can
+    # build dims from insights alone and skip the /campaigns, /adsets, /ads walk.
+    insights_carry_hierarchy = True
 
     # ------------------------------------------------------------- auth
     def auth_url(self, state: str, redirect_uri: str) -> str:

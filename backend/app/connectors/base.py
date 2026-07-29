@@ -74,6 +74,13 @@ class BaseConnector(ABC):
     # How connections are created: "oauth" (browser flow via /connect/{platform})
     # or "service_account" (credentials posted to /connections/service-account).
     auth_kind: ClassVar[str] = "oauth"
+    # If True, this connector's insight rows already carry the full
+    # campaign/adset/ad hierarchy (ids + names), so the sync skips the separate
+    # entity walk (fetch_entities) — roughly halving the API calls, which helps
+    # stay under tight rate limits (e.g. Meta Development-mode). Ad-level-only
+    # reporters (TikTok/Snapchat) keep this False: they need the entity map to
+    # derive an ad's parents.
+    insights_carry_hierarchy: ClassVar[bool] = False
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
