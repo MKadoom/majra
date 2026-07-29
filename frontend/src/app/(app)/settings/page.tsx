@@ -203,9 +203,24 @@ function FxRates({ rates, onChange }: { rates: FxRate[]; onChange: () => void })
     }
   }
 
+  async function autoFetch() {
+    setBusy(true);
+    try {
+      await api.post("/fx-rates/refresh", {});
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Panel title={t("set.fxTitle")}>
-      <p className="mb-3 text-sm text-muted">{t("set.fxBlurb")}</p>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="text-sm text-muted">{t("set.fxBlurb")}</p>
+        <button className="btn-quiet shrink-0" onClick={autoFetch} disabled={busy}>
+          {busy ? t("common.working") : t("set.fxFetch")}
+        </button>
+      </div>
       {rates.length > 0 && (
         <ul className="mb-3 flex flex-col gap-1.5 text-sm">
           {rates.map((r) => (
