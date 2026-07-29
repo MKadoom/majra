@@ -231,12 +231,16 @@ export default function ExplorePage() {
   const byPlatform = useMemo(() => {
     if (dataset !== "ads" || !timeKey) return [];
     const metric = measures[0];
-    const sums = new Map<string, { value: number; rows: number; last: string }>();
+    const sums = new Map<
+      string,
+      { value: number; impressions: number; rows: number; last: string }
+    >();
     for (const row of series) {
       const key = String(row[timeKey] ?? "");
       if (!key) continue;
-      const cur = sums.get(key) ?? { value: 0, rows: 0, last: "" };
+      const cur = sums.get(key) ?? { value: 0, impressions: 0, rows: 0, last: "" };
       cur.value += Number(row[metric] ?? 0);
+      cur.impressions += Number(row.impressions ?? 0);
       cur.rows += 1;
       // ISO dates sort lexically, so the max string is the latest day we hold.
       const d = String(row.date ?? "");
@@ -245,9 +249,10 @@ export default function ExplorePage() {
     }
     const total = [...sums.values()].reduce((a, b) => a + b.value, 0);
     return [...sums.entries()]
-      .map(([platform, { value, rows, last }]) => ({
+      .map(([platform, { value, impressions, rows, last }]) => ({
         platform,
         value,
+        impressions,
         rows,
         share: total > 0 ? value / total : 0,
         // A platform whose newest day is behind the window end hasn't caught
@@ -532,7 +537,7 @@ export default function ExplorePage() {
                   </li>
                 ))}
               </ul>
-              {byPlatform.some((p) => p.value === 0) && (
+              {byPlatform.some((p) => p.value === 0 && p.impressions === 0) && (
                 <p className="border-t border-line px-4 py-2 text-sm text-muted">
                   {t("explore.zeroPlatformHint")}
                 </p>
