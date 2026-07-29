@@ -11,11 +11,12 @@ from app.api.keys import get_read_principal
 from app.connectors.base import BREAKDOWN_SETS
 from app.core.config import settings
 from app.core.db import get_db
-from app.models import Connection, FxRate, Schedule, SyncJob, SyncLog, User
+from app.models import Budget, Connection, FxRate, Schedule, SyncJob, SyncLog, User
 from app.services import exports
 from app.services.datasets import run_dataset_query
 from app.services.freshness import freshness_report
 from app.services.metrics import query_metrics
+from app.services.pacing import pacing_report
 from app.services.social_metrics import query_social_metrics
 from app.services.web_metrics import query_web_metrics
 
@@ -231,6 +232,64 @@ def metrics(
         page_size=page_size,
         reporting_currency=currency,
     )
+
+
+# ----------------------------------------------------------------- budgets
+class BudgetIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    amount_monthly: float = Field(gt=0)
+    platform: str | None = None       # None = all platforms
+    account_id: int | None = None     # None = all accounts in scope
+    currency: str = Field("USD", min_length=3, max_length=8)
+    enabled: bool = True
+
+
+def _budget_out(b: Budget) -> dict:
+    return {
+        "id": b.id, "name": b.name, "platform": b.platform,
+        "account_id": b.account_id, "amount_monthly": float(b.amount_monthly),
+        "currency": b.currency, "enabled": b.enabled, "created_at": b.created_at,
+    }
+
+
+@router.get("/budgets")
+def list_budgets(user: User = Depends(get_read_principal), db: Session = Depends(get_db)):
+    rows = db.scalars(
+        select(Budget).where(Budget.user_id == user.id).order_by(Budget.id)
+    )
+    return [_budget_out(b) for b in rows]
+
+
+@router.post("/budgets", status_code=201)
+def create_budget(
+    body: BudgetIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    b = Budget(
+        user_id=user.id, name=body.name, platform=body.platform,
+        account_id=body.account_id, amount_monthly=body.amount_monthly,
+        currency=body.currency.upper(), enabled=body.enabled,
+    )
+    db.add(b)
+    db.commit()
+    return _budget_out(b)
+
+
+@router.delete("/budgets/{budget_id}", status_code=204)
+def delete_budget(
+    budget_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    b = db.get(Budget, budget_id)
+    if b is None or b.user_id != user.id:
+        raise HTTPException(404, "budget not found")
+    db.delete(b)
+    db.commit()
+
+
+@router.get("/pacing")
+def pacing(user: User = Depends(get_read_principal), db: Session = Depends(get_db)):
+    """Month-to-date spend vs budget for each budget, with a projection and an
+    over/under/on_track status."""
+    return pacing_report(db)
 
 
 # ---------------------------------------------------------------- freshness

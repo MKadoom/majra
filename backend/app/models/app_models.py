@@ -160,6 +160,29 @@ class SavedReport(Base):
     user: Mapped["User"] = relationship()
 
 
+class Budget(Base):
+    """A monthly spend budget for a scope (all platforms, one platform, or one
+    account). Pacing compares month-to-date spend — blended into the budget's
+    currency — against `amount_monthly` and the fraction of the month elapsed."""
+
+    __tablename__ = "budgets"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app.users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    platform: Mapped[str | None] = mapped_column(String(50), nullable=True)  # null = all
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("norm.accounts.id"), nullable=True
+    )
+    amount_monthly: Mapped[float] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship()
+
+
 class FxRate(Base):
     """Exchange rate used to blend spend/value across account currencies into a
     single reporting currency. `rate_to_usd` is the USD value of one unit of

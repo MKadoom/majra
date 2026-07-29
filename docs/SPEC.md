@@ -179,6 +179,8 @@ Derived metrics are null when their denominator is zero.
     saved_reports(id, user_id, name, dataset, params JSONB, destination JSONB,
                   cadence, hour_utc, enabled, last_run_at, last_status, last_error)
     fx_rates(id, currency UNIQUE, rate_to_usd NUMERIC, updated_at)
+    budgets(id, user_id, name, platform?, account_id?, amount_monthly NUMERIC,
+            currency, enabled, created_at)
 
 `cadence`: `hourly | every_3h | daily | weekly | manual`.
 `status` on connections: `active | needs_reauth | disabled`.

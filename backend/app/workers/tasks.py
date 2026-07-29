@@ -6,6 +6,7 @@ from app.connectors.base import TransientError
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.services.freshness import stale_connections
+from app.services.pacing import over_budget
 from app.services.reports import run_due_reports
 from app.services.schedules import tick_schedules
 from app.services.sync import run_sync
@@ -31,6 +32,11 @@ celery_app.conf.update(
         # gone stale (source stopped, or sync failing).
         "check-freshness": {
             "task": "app.workers.tasks.check_freshness_task",
+            "schedule": 86400.0,
+        },
+        # Budget pacing sweep once a day: alert on budgets projected to overspend.
+        "check-budgets": {
+            "task": "app.workers.tasks.check_budgets_task",
             "schedule": 86400.0,
         },
     },
@@ -121,5 +127,32 @@ def check_freshness_task() -> int:
                         connections=[s["connection_id"] for s in stale])
             _freshness_alert(stale)
         return len(stale)
+    finally:
+        db.close()
+
+
+def _budget_alert(over: list[dict]) -> None:
+    if not settings.alert_webhook_url or not over:
+        return
+    try:
+        httpx.post(
+            settings.alert_webhook_url,
+            json={"event": "budget.over", "budgets": over},
+            timeout=10,
+        )
+    except httpx.HTTPError:
+        log.warning("alert.webhook_failed", event="budget.over")
+
+
+@celery_app.task
+def check_budgets_task() -> int:
+    db = SessionLocal()
+    try:
+        over = over_budget(db)
+        if over:
+            log.warning("budget.over", count=len(over),
+                        budgets=[b["budget_id"] for b in over])
+            _budget_alert(over)
+        return len(over)
     finally:
         db.close()

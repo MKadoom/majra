@@ -349,3 +349,40 @@ def test_freshness_flags_stale_connection(db, connection):
     fresh = freshness_report(db, today=date(2026, 6, 3), grace_days=2)
     row2 = next(r for r in fresh if r["connection_id"] == connection.id)
     assert row2["stale"] is False
+
+
+def test_budget_pacing(db, connection):
+    """Month-to-date spend projects to month-end and flags over/on_track."""
+    from app.models import Budget
+    from app.services.pacing import pacing_report
+
+    acc = Account(connection_id=connection.id, platform="meta",
+                  external_id="act_p", name="P", currency="USD")
+    db.add(acc)
+    db.flush()
+
+    def spend_row(day, amt):
+        return FactAdPerformance(
+            date=day, platform="meta", account_id=acc.id, breakdown="none",
+            spend=amt, currency="USD", impressions=1, clicks=0, conversions=0,
+            conversion_value=0, video_views=0, leads=0, purchases=0)
+
+    db.add(spend_row(date(2026, 6, 5), 300))
+    b = Budget(user_id=connection.user_id, name="June", amount_monthly=1000,
+               currency="USD", enabled=True)
+    db.add(b)
+    db.commit()
+
+    # today = 2026-06-10 → 10/30 of June elapsed; MTD 300 → projected 900 (on_track)
+    row = next(r for r in pacing_report(db, today=date(2026, 6, 10))
+               if r["budget_id"] == b.id)
+    assert row["spent_mtd"] == 300.0
+    assert row["projected_month_end"] == 900.0
+    assert row["status"] == "on_track"
+
+    # add spend → MTD 500 → projected 1500 > 1000 → over
+    db.add(spend_row(date(2026, 6, 8), 200))
+    db.commit()
+    row2 = next(r for r in pacing_report(db, today=date(2026, 6, 10))
+                if r["budget_id"] == b.id)
+    assert row2["projected_month_end"] == 1500.0 and row2["status"] == "over"
