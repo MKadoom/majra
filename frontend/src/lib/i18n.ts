@@ -194,6 +194,7 @@ const en: Dict = {
   "conn.accountsSome": "Syncing {n} of {m} accounts",
   "conn.accountsHint": "Pick only the accounts you want tracked. Fewer accounts means faster, more accurate syncs and less rate-limit pressure.",
   "conn.accountsSaved": "Account selection saved.",
+  "conn.stale": "{n}d behind",
   "conn.pauseDaily": "Pause daily sync",
   "conn.resumeDaily": "Resume daily sync",
   "conn.manualOnly": "Manual only",
@@ -272,6 +273,9 @@ const en: Dict = {
 
   // settings
   "set.title": "Settings",
+  "set.fxTitle": "Currency rates",
+  "set.fxBlurb": "Set an exchange rate per currency (USD value of one unit) so Explore can blend mixed-currency accounts into one reporting currency. USD is always 1.",
+  "set.fxSave": "Save rate",
   "set.account": "Account",
   "set.joined": "Joined",
   "set.keys": "API keys ({n})",
@@ -469,6 +473,7 @@ const ar: Dict = {
   "conn.accountsSome": "مزامنة {n} من {m} حسابات",
   "conn.accountsHint": "اختر الحسابات التي تريد تتبّعها فقط. عدد أقل من الحسابات يعني مزامنة أسرع وأدق وضغطًا أقل على حدود الطلبات.",
   "conn.accountsSaved": "تم حفظ اختيار الحسابات.",
+  "conn.stale": "متأخر {n} يوم",
   "conn.pauseDaily": "إيقاف المزامنة اليومية",
   "conn.resumeDaily": "استئناف المزامنة اليومية",
   "conn.manualOnly": "يدوي فقط",
@@ -546,6 +551,9 @@ const ar: Dict = {
 
   // settings
   "set.title": "الإعدادات",
+  "set.fxTitle": "أسعار العملات",
+  "set.fxBlurb": "حدّد سعر صرف لكل عملة (قيمة الوحدة بالدولار) حتى تتمكن لوحة الاستكشاف من دمج الحسابات متعددة العملات في عملة تقارير واحدة. الدولار دائمًا 1.",
+  "set.fxSave": "حفظ السعر",
   "set.account": "الحساب",
   "set.joined": "تاريخ الانضمام",
   "set.keys": "مفاتيح الواجهة البرمجية ({n})",

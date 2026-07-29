@@ -17,6 +17,21 @@ export type Connection = {
   created_at: string;
 };
 
+export type Freshness = {
+  connection_id: number;
+  platform: string;
+  name: string;
+  last_date: string | null;
+  days_stale: number | null;
+  stale: boolean;
+};
+
+export type FxRate = {
+  currency: string;
+  rate_to_usd: number;
+  updated_at: string | null;
+};
+
 export type Budget = {
   id: number;
   name: string;

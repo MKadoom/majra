@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Empty, ErrorNote, Panel, PlatformDot, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useLocale } from "@/lib/locale";
-import type { Account, ApiKey } from "@/lib/types";
+import type { Account, ApiKey, FxRate } from "@/lib/types";
 
 type Me = { id: number; email: string; created_at: string };
 
@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [rates, setRates] = useState<FxRate[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [keyName, setKeyName] = useState("");
@@ -23,14 +24,16 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [m, a, k] = await Promise.all([
+    const [m, a, k, fx] = await Promise.all([
       api.get<Me>("/auth/me"),
       api.get<Account[]>("/accounts"),
       api.get<ApiKey[]>("/api-keys"),
+      api.get<FxRate[]>("/fx-rates"),
     ]);
     setMe(m);
     setAccounts(a);
     setKeys(k);
+    setRates(fx);
     setLoading(false);
   }, []);
 
@@ -173,6 +176,71 @@ export default function SettingsPage() {
           </ul>
         )}
       </Panel>
+
+      <FxRates rates={rates} onChange={load} />
     </div>
+  );
+}
+
+function FxRates({ rates, onChange }: { rates: FxRate[]; onChange: () => void }) {
+  const { t } = useLocale();
+  const [ccy, setCcy] = useState("");
+  const [rate, setRate] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api.put("/fx-rates", {
+        currency: ccy.toUpperCase(),
+        rate_to_usd: Number(rate),
+      });
+      setCcy("");
+      setRate("");
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title={t("set.fxTitle")}>
+      <p className="mb-3 text-sm text-muted">{t("set.fxBlurb")}</p>
+      {rates.length > 0 && (
+        <ul className="mb-3 flex flex-col gap-1.5 text-sm">
+          {rates.map((r) => (
+            <li key={r.currency} className="flex items-center gap-2">
+              <span className="num w-12">{r.currency}</span>
+              <span className="num text-muted">
+                1 {r.currency} = {r.rate_to_usd} USD
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <input
+          className="field w-24"
+          placeholder="SAR"
+          value={ccy}
+          onChange={(e) => setCcy(e.target.value)}
+        />
+        <input
+          className="field num w-32"
+          type="number"
+          step="0.0001"
+          placeholder="0.2667"
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+        />
+        <button
+          className="btn-primary"
+          onClick={save}
+          disabled={busy || !ccy || !rate}
+        >
+          {busy ? t("common.working") : t("set.fxSave")}
+        </button>
+      </div>
+    </Panel>
   );
 }

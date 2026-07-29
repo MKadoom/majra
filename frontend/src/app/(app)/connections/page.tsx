@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/locale";
 import type {
   Account,
   Connection,
+  Freshness,
   InviteLink,
   MetricPage,
   PlatformInfo,
@@ -29,6 +30,7 @@ export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [freshness, setFreshness] = useState<Record<number, Freshness>>({});
   const [coverage, setCoverage] = useState<Record<string, Set<string>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,16 +40,18 @@ export default function ConnectionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [p, c, a, s] = await Promise.all([
+      const [p, c, a, s, f] = await Promise.all([
         api.get<{ platforms: PlatformInfo[] }>("/platforms"),
         api.get<Connection[]>("/connections"),
         api.get<Account[]>("/accounts"),
         api.get<Schedule[]>("/schedules"),
+        api.get<Freshness[]>("/freshness"),
       ]);
       setPlatforms(p.platforms);
       setConnections(c);
       setAccounts(a);
       setSchedules(s);
+      setFreshness(Object.fromEntries(f.map((x) => [x.connection_id, x])));
 
       // Daily coverage for the channel strips: one query per dataset shape,
       // not one per connection.
@@ -116,6 +120,7 @@ export default function ConnectionsPage() {
               accounts={accounts.filter((a) => a.connection_id === c.id)}
               schedule={schedules.find((s) => s.connection_id === c.id) ?? null}
               days={coverage[c.platform] ?? new Set()}
+              fresh={freshness[c.id] ?? null}
               onChange={load}
             />
           ))}
@@ -130,12 +135,14 @@ function ConnectionCard({
   accounts,
   schedule,
   days,
+  fresh,
   onChange,
 }: {
   connection: Connection;
   accounts: Account[];
   schedule: Schedule | null;
   days: Set<string>;
+  fresh: Freshness | null;
   onChange: () => void;
 }) {
   const { t, p: pName, ago } = useLocale();
@@ -228,6 +235,11 @@ function ConnectionCard({
             <PlatformDot platform={connection.platform} />
             {pName(connection.platform)}
             <Status value={connection.status} />
+            {fresh?.stale && (
+              <span className="rounded-full border border-bad/40 bg-bad/10 px-2 py-0.5 text-eyebrow text-bad">
+                {t("conn.stale", { n: fresh.days_stale ?? 0 })}
+              </span>
+            )}
           </h3>
           <p className="mt-1 text-sm text-muted">
             {accounts.length > 0
