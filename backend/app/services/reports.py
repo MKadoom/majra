@@ -123,7 +123,51 @@ def deliver(report: SavedReport, rows: list[dict], date_from: date, date_to: dat
         return deliver_webhook(report, dest, rows, date_from, date_to)
     if kind == "email":
         return deliver_email(report, dest, rows, date_from, date_to)
+    if kind in ("slack", "teams"):
+        return deliver_chat(report, dest, rows, date_from, date_to)
     raise PermanentError(f"unknown report destination '{kind}'")
+
+
+def _cell_s(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return f"{v:,.2f}"
+    return str(v)
+
+
+def _summary_text(
+    report: SavedReport, rows: list[dict], date_from: date, date_to: date, top: int
+) -> str:
+    head = (
+        f"*{report.name}* — {report.dataset} · {date_from} → {date_to} "
+        f"· {len(rows)} rows"
+    )
+    if not rows:
+        return head + "\n(no rows in this window)"
+    cols = list(rows[0].keys())[:6]  # keep it readable in a chat message
+    lines = [" | ".join(cols)]
+    lines += [" | ".join(_cell_s(r.get(c)) for c in cols) for r in rows[:top]]
+    table = "```\n" + "\n".join(lines) + "\n```"
+    more = f"\n…and {len(rows) - top} more" if len(rows) > top else ""
+    return head + "\n" + table + more
+
+
+def deliver_chat(
+    report: SavedReport, dest: dict, rows: list[dict], date_from: date, date_to: date
+) -> None:
+    """Slack / Microsoft Teams via an incoming-webhook URL. Both render a simple
+    {"text": …} payload, so one path serves both — a compact summary with the
+    top rows as a code-block table."""
+    url = dest.get("url")
+    if not url:
+        raise PermanentError(f"{dest.get('kind')} destination needs a webhook url")
+    text = _summary_text(report, rows, date_from, date_to, int(dest.get("top", 10)))
+    res = httpx.post(url, json={"text": text}, timeout=30)
+    if res.status_code >= 400:
+        raise PermanentError(
+            f"{dest.get('kind')} webhook returned {res.status_code}"
+        )
 
 
 def deliver_google_sheets(dest: dict, rows: list[dict]) -> None:

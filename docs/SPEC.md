@@ -214,7 +214,8 @@ Derived metrics are null when their denominator is zero.
   report means "the last 30 days", not a range frozen at creation. Destinations:
   `google_sheets` (clear tab, then write — so a shorter result leaves no stale
   rows), `webhook` (HMAC-SHA256 in `X-Majra-Signature`), `email` (CSV attachment
-  over SMTP). Celery beat runs due reports every 10 minutes. Secrets and service
+  over SMTP), and `slack` / `teams` (a compact summary posted to an
+  incoming-webhook URL). Celery beat runs due reports every 10 minutes. Secrets and service
   accounts are never echoed back by the API.
 - The three query services no longer clamp `page_size` internally — the 1000-row
   cap lives at the HTTP boundary (`Query(le=1000)`), so exports can legitimately

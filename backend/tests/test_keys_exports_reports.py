@@ -338,3 +338,33 @@ def test_beat_runs_due_reports_only(auth_client, db, seeded):
     names = {r.name: r.last_status for r in db.scalars(select(SavedReport))}
     assert names["6am"] == "success"
     assert names["9am"] is None  # not its hour
+
+
+def test_report_slack_teams_delivery():
+    """Slack/Teams destinations post a {text: …} summary to the webhook URL."""
+    import json as _json
+    from datetime import date
+
+    import httpx
+    import respx
+
+    from app.models import SavedReport
+    from app.services.reports import _summary_text, deliver_chat
+
+    rep = SavedReport(name="Daily spend", dataset="ads")
+    rows = [{"platform": "meta", "spend": 10.5}, {"platform": "snapchat", "spend": 20.0}]
+
+    text = _summary_text(rep, rows, date(2026, 6, 1), date(2026, 6, 30), top=10)
+    assert "Daily spend" in text and "meta" in text and "10.50" in text
+
+    with respx.mock:
+        route = respx.post("https://hooks.slack.test/x").mock(
+            return_value=httpx.Response(200)
+        )
+        deliver_chat(
+            rep, {"kind": "slack", "url": "https://hooks.slack.test/x"},
+            rows, date(2026, 6, 1), date(2026, 6, 30),
+        )
+        assert route.called
+        body = _json.loads(route.calls[0].request.content)
+        assert "text" in body and "Daily spend" in body["text"]

@@ -11,7 +11,7 @@ from app.services.reports import run_report
 
 router = APIRouter(prefix="/reports", tags=["saved reports"])
 
-DESTINATIONS = ("google_sheets", "webhook", "email")
+DESTINATIONS = ("google_sheets", "webhook", "email", "slack", "teams")
 
 
 class ReportIn(BaseModel):
