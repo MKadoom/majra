@@ -12,6 +12,8 @@ export type Connection = {
   platform: string;
   name: string;
   status: string;
+  /** Account external_ids this connection syncs; null/empty = all of them. */
+  synced_account_ids: string[] | null;
   created_at: string;
 };
 

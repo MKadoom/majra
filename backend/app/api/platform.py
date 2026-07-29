@@ -129,7 +129,7 @@ class SyncedAccounts(BaseModel):
     account_external_ids: list[str]
 
 
-@router.put("/connections/{connection_id}/synced-accounts")
+@router.patch("/connections/{connection_id}/synced-accounts")
 def set_synced_accounts(
     connection_id: int,
     body: SyncedAccounts,

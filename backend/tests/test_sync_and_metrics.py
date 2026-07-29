@@ -276,7 +276,7 @@ def test_synced_account_allowlist_restricts_sync(auth_client, db, connection):
     """A connection can be pinned to a subset of its accounts; only those sync."""
     _mock_graph_two_accounts()
 
-    r = auth_client.put(
+    r = auth_client.patch(
         f"/connections/{connection.id}/synced-accounts",
         json={"account_external_ids": ["act_2"]},
     )
@@ -295,7 +295,7 @@ def test_synced_account_allowlist_restricts_sync(auth_client, db, connection):
     assert {f.account_id for f in facts} == {act2.id}
 
     # clearing the allow-list restores "sync all" (stored as NULL)
-    r2 = auth_client.put(
+    r2 = auth_client.patch(
         f"/connections/{connection.id}/synced-accounts",
         json={"account_external_ids": []},
     )

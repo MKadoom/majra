@@ -141,7 +141,37 @@ function ConnectionCard({
   const { t, p: pName, ago } = useLocale();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [pickAccounts, setPickAccounts] = useState(false);
   const isConfig = CONFIG.has(connection.platform);
+
+  // Account allow-list: null/empty synced_account_ids means "sync every account".
+  const allExternal = accounts.map((a) => a.external_id);
+  const pinned = connection.synced_account_ids;
+  const syncingAll = !pinned || pinned.length === 0;
+  const isOn = (ext: string) => syncingAll || pinned!.includes(ext);
+  const onCount = accounts.filter((a) => isOn(a.external_id)).length;
+
+  async function toggleAccount(ext: string) {
+    const current = allExternal.filter(isOn);
+    const next = current.includes(ext)
+      ? current.filter((x) => x !== ext)
+      : [...current, ext];
+    if (next.length === 0) return; // keep at least one account synced
+    setBusy(true);
+    setNote(null);
+    try {
+      // Sending [] means "all"; store the subset otherwise.
+      await api.patch(`/connections/${connection.id}/synced-accounts`, {
+        account_external_ids: next.length === allExternal.length ? [] : next,
+      });
+      setNote(t("conn.accountsSaved"));
+      onChange();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : t("conn.loadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function runNow() {
     setBusy(true);
@@ -231,6 +261,16 @@ function ConnectionCard({
           </button>
         )}
 
+        {!isConfig && accounts.length > 1 && (
+          <button
+            className="btn-quiet"
+            onClick={() => setPickAccounts((v) => !v)}
+            disabled={busy}
+          >
+            {t("conn.chooseAccounts")} ({onCount}/{accounts.length})
+          </button>
+        )}
+
         <span className="ms-auto text-sm text-muted">
           {schedule
             ? t("conn.scheduleState", {
@@ -240,6 +280,36 @@ function ConnectionCard({
             : t("conn.manualOnly")}
         </span>
       </div>
+
+      {pickAccounts && !isConfig && (
+        <div className="mt-3 rounded-md border border-line bg-ground p-3">
+          <p className="eyebrow mb-1">
+            {syncingAll
+              ? t("conn.accountsAll", { m: accounts.length })
+              : t("conn.accountsSome", { n: onCount, m: accounts.length })}
+          </p>
+          <p className="mb-2 text-eyebrow text-muted">{t("conn.accountsHint")}</p>
+          <div className="flex flex-col gap-1.5">
+            {accounts.map((a) => (
+              <label
+                key={a.id}
+                className="flex items-center gap-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={isOn(a.external_id)}
+                  disabled={busy}
+                  onChange={() => toggleAccount(a.external_id)}
+                />
+                <span className="min-w-0 truncate">{a.name}</span>
+                {a.currency && (
+                  <span className="text-eyebrow text-muted">{a.currency}</span>
+                )}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {note && <p className="mt-2 text-sm text-muted">{note}</p>}
     </article>
