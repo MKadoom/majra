@@ -386,3 +386,33 @@ def test_budget_pacing(db, connection):
     row2 = next(r for r in pacing_report(db, today=date(2026, 6, 10))
                 if r["budget_id"] == b.id)
     assert row2["projected_month_end"] == 1500.0 and row2["status"] == "over"
+
+
+def test_spend_anomaly_detection(db, connection):
+    """A day whose spend jumps far above the trailing average is flagged."""
+    from app.services.anomalies import anomaly_report
+
+    acc = Account(connection_id=connection.id, platform="meta",
+                  external_id="act_a", name="Acct A", currency="USD")
+    db.add(acc)
+    db.flush()
+
+    def row(day, amt):
+        return FactAdPerformance(
+            date=day, platform="meta", account_id=acc.id, breakdown="none",
+            spend=amt, currency="USD", impressions=1, clicks=0, conversions=0,
+            conversion_value=0, video_views=0, leads=0, purchases=0)
+
+    for d in range(1, 7):           # steady 100/day, Jun 1–6
+        db.add(row(date(2026, 6, d), 100))
+    db.add(row(date(2026, 6, 7), 300))   # spike on Jun 7
+    db.commit()
+
+    rep = anomaly_report(db, today=date(2026, 6, 8), lookback=14, threshold=0.5)
+    a = next(r for r in rep if r["account"] == "Acct A")
+    assert a["direction"] == "spike"
+    assert a["latest_spend"] == 300.0 and a["avg_spend"] == 100.0
+
+    # a small wobble stays below threshold
+    calm = anomaly_report(db, today=date(2026, 6, 8), lookback=14, threshold=3.0)
+    assert not any(r["account"] == "Acct A" for r in calm)

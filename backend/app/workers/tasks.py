@@ -5,6 +5,7 @@ from celery import Celery, Task
 from app.connectors.base import TransientError
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.services.anomalies import anomaly_report
 from app.services.freshness import stale_connections
 from app.services.pacing import over_budget
 from app.services.reports import run_due_reports
@@ -37,6 +38,11 @@ celery_app.conf.update(
         # Budget pacing sweep once a day: alert on budgets projected to overspend.
         "check-budgets": {
             "task": "app.workers.tasks.check_budgets_task",
+            "schedule": 86400.0,
+        },
+        # Spend anomaly sweep once a day: alert on overnight spikes/drops.
+        "check-anomalies": {
+            "task": "app.workers.tasks.check_anomalies_task",
             "schedule": 86400.0,
         },
     },
@@ -154,5 +160,32 @@ def check_budgets_task() -> int:
                         budgets=[b["budget_id"] for b in over])
             _budget_alert(over)
         return len(over)
+    finally:
+        db.close()
+
+
+def _anomaly_alert(anomalies: list[dict]) -> None:
+    if not settings.alert_webhook_url or not anomalies:
+        return
+    try:
+        httpx.post(
+            settings.alert_webhook_url,
+            json={"event": "spend.anomaly", "anomalies": anomalies},
+            timeout=10,
+        )
+    except httpx.HTTPError:
+        log.warning("alert.webhook_failed", event="spend.anomaly")
+
+
+@celery_app.task
+def check_anomalies_task() -> int:
+    db = SessionLocal()
+    try:
+        found = anomaly_report(db)
+        if found:
+            log.warning("spend.anomaly", count=len(found),
+                        accounts=[a["account"] for a in found])
+            _anomaly_alert(found)
+        return len(found)
     finally:
         db.close()

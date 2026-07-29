@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.models import Budget, Connection, FxRate, Schedule, SyncJob, SyncLog, User
 from app.services import exports
+from app.services.anomalies import anomaly_report
 from app.services.datasets import run_dataset_query
 from app.services.freshness import freshness_report
 from app.services.metrics import query_metrics
@@ -290,6 +291,19 @@ def pacing(user: User = Depends(get_read_principal), db: Session = Depends(get_d
     """Month-to-date spend vs budget for each budget, with a projection and an
     over/under/on_track status."""
     return pacing_report(db)
+
+
+# ---------------------------------------------------------------- anomalies
+@router.get("/anomalies")
+def anomalies(
+    lookback: int = Query(14, ge=3, le=90),
+    threshold: float = Query(0.5, gt=0),
+    user: User = Depends(get_read_principal),
+    db: Session = Depends(get_db),
+):
+    """Accounts whose latest day's spend deviates from its trailing average by
+    more than `threshold` (spike or drop)."""
+    return anomaly_report(db, lookback=lookback, threshold=threshold)
 
 
 # ---------------------------------------------------------------- freshness
