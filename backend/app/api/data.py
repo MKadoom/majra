@@ -500,12 +500,15 @@ def export(
     campaign_id: list[int] | None = Query(None),
     group_by: list[str] | None = Query(None),
     sort: str | None = None,
+    total: bool = Query(False, description="Append a summary Total row"),
     user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     """Same filters as the matching query endpoint, but returns a file instead of
     a page. `dataset` is `ads`, `web` or `social`. Works with an API key, so a
-    nightly script can pull yesterday's numbers straight into a spreadsheet."""
+    nightly script can pull yesterday's numbers straight into a spreadsheet.
+    Pass `total=true` to append a summary Total row (off by default so plain-data
+    exports stay clean for pivots/imports)."""
     if format not in exports.FORMATS:
         raise HTTPException(422, f"format must be one of {exports.FORMATS}")
     rows = run_dataset_query(
@@ -521,6 +524,10 @@ def export(
         sort=sort,
         limit=exports.cap(),
     )
+    if total:
+        tr = exports.total_row(rows)
+        if tr is not None:
+            rows = [*rows, tr]
     name = exports.filename(dataset, date_from, date_to, format)
     headers = {"content-disposition": f'attachment; filename="{name}"'}
 

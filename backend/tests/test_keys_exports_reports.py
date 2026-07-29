@@ -368,3 +368,25 @@ def test_report_slack_teams_delivery():
         assert route.called
         body = _json.loads(route.calls[0].request.content)
         assert "text" in body and "Daily spend" in body["text"]
+
+
+def test_export_total_row():
+    """Total row sums additive columns and recomputes ratios from the sums."""
+    from app.services.exports import total_row
+
+    rows = [
+        {"platform": "meta", "spend": 100.0, "impressions": 1000, "clicks": 50,
+         "conversions": 10, "conversion_value": 500.0, "ctr": 5.0, "cpc": 2.0,
+         "cpm": 100.0, "cpa": 10.0, "roas": 5.0},
+        {"platform": "snapchat", "spend": 300.0, "impressions": 3000, "clicks": 50,
+         "conversions": 10, "conversion_value": 1500.0, "ctr": 1.667, "cpc": 6.0,
+         "cpm": 100.0, "cpa": 30.0, "roas": 5.0},
+    ]
+    t = total_row(rows)
+    assert t["platform"] == "Total"
+    assert t["spend"] == 400.0 and t["impressions"] == 4000 and t["clicks"] == 100
+    assert t["conversions"] == 20 and t["conversion_value"] == 2000.0
+    assert t["ctr"] == 2.5          # 100/4000*100, recomputed not averaged
+    assert t["cpc"] == 4.0          # 400/100
+    assert t["roas"] == 5.0         # 2000/400
+    assert total_row([]) is None

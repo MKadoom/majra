@@ -630,6 +630,26 @@ export default function ExplorePage() {
                       </tr>
                     ))}
                   </tbody>
+                  {totals && table.length > 0 && (
+                    // Total row — uses the ungrouped aggregate (same figures as
+                    // the KPI cards), so ratios (ctr/cpc/cpm/cpa/roas) are
+                    // recomputed from the sums, never averaged.
+                    <tfoot>
+                      <tr className="border-t-2 border-line font-medium">
+                        <td
+                          className="px-2 py-2 eyebrow"
+                          colSpan={Math.max(groupBy.length, 1)}
+                        >
+                          {t("explore.total")}
+                        </td>
+                        {measures.map((m) => (
+                          <td key={m} className="num px-2 py-2 text-end">
+                            {measure(m, totals[m])}
+                          </td>
+                        ))}
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             )}
