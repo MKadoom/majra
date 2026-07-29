@@ -17,6 +17,30 @@ export type Connection = {
   created_at: string;
 };
 
+export type Budget = {
+  id: number;
+  name: string;
+  platform: string | null;
+  account_id: number | null;
+  amount_monthly: number;
+  currency: string;
+  enabled: boolean;
+  created_at: string;
+};
+
+export type Pacing = {
+  budget_id: number;
+  name: string;
+  platform: string | null;
+  account_id: number | null;
+  currency: string;
+  amount_monthly: number;
+  spent_mtd: number;
+  projected_month_end: number;
+  pct_used: number | null;
+  status: "over" | "under" | "on_track";
+};
+
 export type Account = {
   id: number;
   connection_id: number;

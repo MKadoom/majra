@@ -7,6 +7,7 @@ import { useLocale } from "@/lib/locale";
 
 const LINKS = [
   { href: "/explore", key: "nav.explore" },
+  { href: "/budgets", key: "nav.budgets" },
   { href: "/connections", key: "nav.connections" },
   { href: "/jobs", key: "nav.jobs" },
   { href: "/reports", key: "nav.reports" },
