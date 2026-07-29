@@ -77,6 +77,22 @@ export default function ExplorePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [compare, setCompare] = useState(false);
+  const [currency, setCurrency] = useState(""); // "" = raw per-currency
+  const [fxCurrencies, setFxCurrencies] = useState<string[]>([]);
+
+  // Reporting-currency options: USD plus any currency with a configured rate.
+  useEffect(() => {
+    api
+      .get<{ currency: string }[]>("/fx-rates")
+      .then((rs) =>
+        setFxCurrencies(
+          ["USD", ...rs.map((r) => r.currency)].filter(
+            (v, i, a) => a.indexOf(v) === i,
+          ),
+        ),
+      )
+      .catch(() => setFxCurrencies(["USD"]));
+  }, []);
 
   const measures = dataset === "tags" ? [] : DATASET_MEASURES[dataset];
   const groupOptions = dataset === "tags" ? [] : DATASET_GROUPS[dataset];
@@ -95,6 +111,7 @@ export default function ExplorePage() {
         date_from: from,
         date_to: to,
         ...(dataset === "ads" && platforms.length ? { platform: platforms } : {}),
+        ...(dataset === "ads" && currency ? { currency } : {}),
       };
 
       // Three questions, three queries: the headline, the shape over time, and
@@ -148,7 +165,7 @@ export default function ExplorePage() {
     } finally {
       setLoading(false);
     }
-  }, [dataset, from, to, platforms, groupBy, measures, timeKey, t]);
+  }, [dataset, from, to, platforms, groupBy, measures, timeKey, currency, compare, t]);
 
   useEffect(() => {
     void load();
@@ -264,6 +281,26 @@ export default function ExplorePage() {
             />
             {t("explore.compare")}
           </label>
+          {dataset === "ads" && fxCurrencies.length > 0 && (
+            <div>
+              <label htmlFor="ccy" className="eyebrow mb-1 block">
+                {t("explore.currency")}
+              </label>
+              <select
+                id="ccy"
+                className="field"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+              >
+                <option value="">{t("explore.currencyRaw")}</option>
+                {fxCurrencies.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </header>
 
