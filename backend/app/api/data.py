@@ -445,6 +445,7 @@ def accounts(
             "id": a.id,
             "connection_id": a.connection_id,
             "platform": a.platform,
+            "platform_override": a.platform_override,
             "external_id": a.external_id,
             "name": a.name,
             "currency": a.currency,
@@ -452,6 +453,35 @@ def accounts(
         }
         for a in db.scalars(stmt)
     ]
+
+
+class PlatformOverride(BaseModel):
+    # Report this account's facts under this platform label instead of the
+    # connection's. null/empty clears the override.
+    platform: str | None = None
+
+
+@router.patch("/accounts/{account_id}/platform")
+def set_account_platform(
+    account_id: int,
+    body: PlatformOverride,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Relabel an account's platform (e.g. tag a WhatsApp Marketing Messages
+    account as 'whatsapp' so it reports separately from Meta ads). Takes effect
+    on the next sync of that account."""
+    from app.models import Account
+
+    acc = db.get(Account, account_id)
+    if acc is None:
+        raise HTTPException(404, "account not found")
+    conn = db.get(Connection, acc.connection_id)
+    if conn is None or conn.user_id != user.id:
+        raise HTTPException(404, "account not found")
+    acc.platform_override = (body.platform or "").strip().lower() or None
+    db.commit()
+    return {"id": acc.id, "platform_override": acc.platform_override}
 
 
 @router.get(

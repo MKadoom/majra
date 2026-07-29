@@ -71,7 +71,11 @@ for migrations.
 Dimensions (`app/models/norm_models.py`):
 
     accounts(id, connection_id, platform, external_id, name, currency, timezone,
-             UNIQUE(platform, external_id))
+             platform_override?, UNIQUE(platform, external_id))
+    -- platform_override relabels an account's FACTS under a different platform
+    -- than its connection (e.g. a WhatsApp Marketing Messages account the Meta
+    -- Marketing API surfaces → tag "whatsapp" so it reports separately). Set via
+    -- PATCH /accounts/{id}/platform; applied on the next sync.
     campaigns(id, account_id, external_id, name, status, objective,
               UNIQUE(account_id, external_id))
     adsets(id, campaign_id, external_id, name, status,

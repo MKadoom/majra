@@ -215,7 +215,7 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
                 facts.append(
                     dict(
                         date=date.fromisoformat(norm["date"]),
-                        platform=conn.platform,
+                        platform=acc.platform_override or conn.platform,
                         account_id=acc.id,
                         campaign_id=campaign_id,
                         adset_id=adset_id,

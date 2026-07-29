@@ -78,6 +78,7 @@ export const PLATFORM_COLOR: Record<string, string> = {
   ga4: "#B57BFF",
   meta_social: "#F76D8E",
   gtm: "#7DD87D",
+  whatsapp: "#25D366",
 };
 
 export const PLATFORM_LABEL: Record<string, string> = {
@@ -88,13 +89,14 @@ export const PLATFORM_LABEL: Record<string, string> = {
   ga4: "Google Analytics 4",
   meta_social: "Facebook & Instagram",
   gtm: "Tag Manager",
+  whatsapp: "WhatsApp",
 };
 
 export const platformColor = (p: string) => PLATFORM_COLOR[p] ?? "#8B98A5";
 export const platformLabel = (p: string) => PLATFORM_LABEL[p] ?? p;
 
 /** Which platforms feed each dataset — mirrors the connectors' `dataset`. */
-export const AD_PLATFORMS = ["meta", "google_ads", "tiktok", "snapchat"];
+export const AD_PLATFORMS = ["meta", "google_ads", "tiktok", "snapchat", "whatsapp"];
 
 export type Dataset = "ads" | "web" | "social" | "tags";
 

@@ -430,3 +430,26 @@ def test_fx_auto_refresh(db):
     assert n == 2
     sar = db.scalar(select(FxRate).where(FxRate.currency == "SAR"))
     assert abs(float(sar.rate_to_usd) - (1 / 3.75)) < 1e-6
+
+
+@respx.mock
+def test_account_platform_override(auth_client, db, connection):
+    """Tagging an account with a platform override relabels its facts."""
+    _mock_graph_two_accounts()
+    body = {"connection_id": connection.id, "date_from": "2026-06-01",
+            "date_to": "2026-06-01", "breakdown": "none"}
+    auth_client.post("/syncs", json=body)
+
+    act2 = db.scalar(select(Account).where(Account.external_id == "act_2"))
+    r = auth_client.patch(f"/accounts/{act2.id}/platform", json={"platform": "whatsapp"})
+    assert r.status_code == 200 and r.json()["platform_override"] == "whatsapp"
+
+    auth_client.post("/syncs", json=body)  # re-sync applies the relabel
+    db.expire_all()
+    p2 = db.execute(select(FactAdPerformance.platform).where(
+        FactAdPerformance.account_id == act2.id)).scalars().all()
+    assert set(p2) == {"whatsapp"}
+    act1 = db.scalar(select(Account).where(Account.external_id == "act_1"))
+    p1 = db.execute(select(FactAdPerformance.platform).where(
+        FactAdPerformance.account_id == act1.id)).scalars().all()
+    assert set(p1) == {"meta"}

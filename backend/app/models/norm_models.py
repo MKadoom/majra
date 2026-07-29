@@ -34,6 +34,10 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String(300))
     currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Optional label to record this account's facts under a different platform
+    # than the connection's (e.g. a WhatsApp Marketing Messages account that the
+    # Meta Marketing API surfaces — tag it "whatsapp" so it reports separately).
+    platform_override: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
 class Campaign(Base):
