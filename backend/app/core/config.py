@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # Optional alert webhook on final sync failure
     alert_webhook_url: str = ""
 
+    # Public FX provider for auto-refreshing exchange rates (units-per-USD).
+    # Default is the free, keyless open.er-api.com endpoint.
+    fx_provider_url: str = "https://open.er-api.com/v6/latest/USD"
+
     # Exports: a hard cap so a careless query can't exhaust memory.
     export_max_rows: int = 200_000
 

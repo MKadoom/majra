@@ -353,6 +353,19 @@ def set_fx_rate(
     return {"currency": ccy, "rate_to_usd": float(row.rate_to_usd)}
 
 
+@router.post("/fx-rates/refresh")
+def refresh_fx(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Pull the latest rates from the configured public provider (owner-only)."""
+    from app.services.fx import refresh_fx_rates
+    try:
+        n = refresh_fx_rates(db)
+    except Exception as exc:  # noqa: BLE001 — surface provider errors to the caller
+        raise HTTPException(502, f"fx refresh failed: {exc}") from exc
+    return {"updated": n}
+
+
 @router.get("/web-metrics")
 def web_metrics(
     date_from: date,

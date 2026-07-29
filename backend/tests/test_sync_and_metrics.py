@@ -416,3 +416,17 @@ def test_spend_anomaly_detection(db, connection):
     # a small wobble stays below threshold
     calm = anomaly_report(db, today=date(2026, 6, 8), lookback=14, threshold=3.0)
     assert not any(r["account"] == "Acct A" for r in calm)
+
+
+@respx.mock
+def test_fx_auto_refresh(db):
+    """Auto-refresh upserts rate_to_usd = 1 / units-per-USD from the provider."""
+    from app.models import FxRate
+    from app.services.fx import refresh_fx_rates
+
+    respx.get("https://fx.test/latest").mock(return_value=httpx.Response(
+        200, json={"result": "success", "rates": {"SAR": 3.75, "EUR": 0.9}}))
+    n = refresh_fx_rates(db, url="https://fx.test/latest")
+    assert n == 2
+    sar = db.scalar(select(FxRate).where(FxRate.currency == "SAR"))
+    assert abs(float(sar.rate_to_usd) - (1 / 3.75)) < 1e-6

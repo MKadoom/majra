@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.services.anomalies import anomaly_report
 from app.services.freshness import stale_connections
+from app.services.fx import refresh_fx_rates
 from app.services.pacing import over_budget
 from app.services.reports import run_due_reports
 from app.services.schedules import tick_schedules
@@ -44,6 +45,11 @@ celery_app.conf.update(
         "check-anomalies": {
             "task": "app.workers.tasks.check_anomalies_task",
             "schedule": 86400.0,
+        },
+        # Refresh exchange rates weekly from the public provider.
+        "refresh-fx": {
+            "task": "app.workers.tasks.refresh_fx_task",
+            "schedule": 604800.0,
         },
     },
     timezone="UTC",
@@ -187,5 +193,19 @@ def check_anomalies_task() -> int:
                         accounts=[a["account"] for a in found])
             _anomaly_alert(found)
         return len(found)
+    finally:
+        db.close()
+
+
+@celery_app.task
+def refresh_fx_task() -> int:
+    db = SessionLocal()
+    try:
+        n = refresh_fx_rates(db)
+        log.info("fx.refreshed", currencies=n)
+        return n
+    except Exception as exc:  # noqa: BLE001 — provider hiccup shouldn't crash beat
+        log.warning("fx.refresh_failed", error=str(exc))
+        return 0
     finally:
         db.close()
