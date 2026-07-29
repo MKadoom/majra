@@ -17,6 +17,20 @@ export type Connection = {
   created_at: string;
 };
 
+export type SavedView = {
+  id: number;
+  name: string;
+  config: {
+    dataset?: string;
+    platforms?: string[];
+    group_by?: string[];
+    from?: string;
+    to?: string;
+    currency?: string;
+  };
+  created_at: string;
+};
+
 export type Freshness = {
   connection_id: number;
   platform: string;

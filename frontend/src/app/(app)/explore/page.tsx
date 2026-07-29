@@ -27,7 +27,7 @@ import {
 } from "@/lib/api";
 import { daysAgo, isoDate, pctDelta, prevWindow } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
-import type { GtmSnapshot, MetricPage, MetricRow } from "@/lib/types";
+import type { GtmSnapshot, MetricPage, MetricRow, SavedView } from "@/lib/types";
 
 const DATASETS: Dataset[] = ["ads", "web", "social", "tags"];
 
@@ -79,6 +79,7 @@ export default function ExplorePage() {
   const [compare, setCompare] = useState(false);
   const [currency, setCurrency] = useState(""); // "" = raw per-currency
   const [fxCurrencies, setFxCurrencies] = useState<string[]>([]);
+  const [views, setViews] = useState<SavedView[]>([]);
 
   // Reporting-currency options: USD plus any currency with a configured rate.
   useEffect(() => {
@@ -93,6 +94,33 @@ export default function ExplorePage() {
       )
       .catch(() => setFxCurrencies(["USD"]));
   }, []);
+
+  const loadViews = useCallback(() => {
+    void api.get<SavedView[]>("/views").then(setViews).catch(() => setViews([]));
+  }, []);
+  useEffect(() => {
+    loadViews();
+  }, [loadViews]);
+
+  async function saveView() {
+    const name = window.prompt(t("explore.viewName"));
+    if (!name) return;
+    await api.post("/views", {
+      name,
+      config: { dataset, platforms, group_by: groupBy, from, to, currency },
+    });
+    loadViews();
+  }
+
+  function loadView(v: SavedView) {
+    const c = v.config || {};
+    if (c.dataset) setDataset(c.dataset as Dataset);
+    setPlatforms(c.platforms ?? []);
+    setGroupBy(c.group_by ?? []);
+    if (c.from) setFrom(c.from);
+    if (c.to) setTo(c.to);
+    setCurrency(c.currency ?? "");
+  }
 
   const measures = dataset === "tags" ? [] : DATASET_MEASURES[dataset];
   const groupOptions = dataset === "tags" ? [] : DATASET_GROUPS[dataset];
@@ -301,6 +329,29 @@ export default function ExplorePage() {
               </select>
             </div>
           )}
+          <div className="ms-auto flex items-end gap-2">
+            {views.length > 0 && (
+              <select
+                className="field"
+                value=""
+                onChange={(e) => {
+                  const v = views.find((x) => String(x.id) === e.target.value);
+                  if (v) loadView(v);
+                }}
+                aria-label={t("explore.views")}
+              >
+                <option value="">{t("explore.views")}</option>
+                {views.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="btn-quiet" onClick={saveView}>
+              {t("explore.saveView")}
+            </button>
+          </div>
         </div>
       </header>
 

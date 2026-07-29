@@ -453,3 +453,19 @@ def test_account_platform_override(auth_client, db, connection):
     p1 = db.execute(select(FactAdPerformance.platform).where(
         FactAdPerformance.account_id == act1.id)).scalars().all()
     assert set(p1) == {"meta"}
+
+
+def test_saved_views_crud(auth_client):
+    """Save, list, and delete an Explore view."""
+    r = auth_client.post("/views", json={
+        "name": "Meta weekly",
+        "config": {"dataset": "ads", "platforms": ["meta"], "group_by": ["campaign"]}})
+    assert r.status_code == 201, r.text
+    vid = r.json()["id"]
+    assert r.json()["config"]["platforms"] == ["meta"]
+
+    listed = auth_client.get("/views").json()
+    assert any(v["id"] == vid and v["name"] == "Meta weekly" for v in listed)
+
+    assert auth_client.delete(f"/views/{vid}").status_code == 204
+    assert not any(v["id"] == vid for v in auth_client.get("/views").json())

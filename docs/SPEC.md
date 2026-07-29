@@ -185,6 +185,7 @@ Derived metrics are null when their denominator is zero.
     fx_rates(id, currency UNIQUE, rate_to_usd NUMERIC, updated_at)
     budgets(id, user_id, name, platform?, account_id?, amount_monthly NUMERIC,
             currency, enabled, created_at)
+    saved_views(id, user_id, name, config JSONB, created_at)  -- named Explore state
 
 `cadence`: `hourly | every_3h | daily | weekly | manual`.
 `status` on connections: `active | needs_reauth | disabled`.

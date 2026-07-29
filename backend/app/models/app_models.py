@@ -160,6 +160,23 @@ class SavedReport(Base):
     user: Mapped["User"] = relationship()
 
 
+class SavedView(Base):
+    """A named Explore configuration (dataset, platform filter, group-by, date
+    window, reporting currency) the user can reopen. `config` is the opaque
+    dashboard state blob — the backend just persists and returns it."""
+
+    __tablename__ = "saved_views"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app.users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship()
+
+
 class Budget(Base):
     """A monthly spend budget for a scope (all platforms, one platform, or one
     account). Pacing compares month-to-date spend — blended into the budget's

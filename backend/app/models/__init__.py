@@ -4,6 +4,7 @@ from app.models.app_models import (
     Connection,
     FxRate,
     SavedReport,
+    SavedView,
     Schedule,
     SyncJob,
     SyncLog,
@@ -29,7 +30,7 @@ from app.models.norm_models import (
 
 __all__ = [
     "User", "Connection", "Schedule", "SyncJob", "SyncLog",
-    "ApiKey", "SavedReport", "FxRate", "Budget",
+    "ApiKey", "SavedReport", "FxRate", "Budget", "SavedView",
     "Account", "Campaign", "Adset", "Ad",
     "FactAdPerformance", "FactWebPerformance", "FactSocialPerformance",
     "GtmResource",

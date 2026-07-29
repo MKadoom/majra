@@ -11,7 +11,16 @@ from app.api.keys import get_read_principal
 from app.connectors.base import BREAKDOWN_SETS
 from app.core.config import settings
 from app.core.db import get_db
-from app.models import Budget, Connection, FxRate, Schedule, SyncJob, SyncLog, User
+from app.models import (
+    Budget,
+    Connection,
+    FxRate,
+    SavedView,
+    Schedule,
+    SyncJob,
+    SyncLog,
+    User,
+)
 from app.services import exports
 from app.services.anomalies import anomaly_report
 from app.services.datasets import run_dataset_query
@@ -233,6 +242,45 @@ def metrics(
         page_size=page_size,
         reporting_currency=currency,
     )
+
+
+# -------------------------------------------------------------- saved views
+class ViewIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    config: dict = Field(default_factory=dict)
+
+
+def _view_out(v: SavedView) -> dict:
+    return {"id": v.id, "name": v.name, "config": v.config, "created_at": v.created_at}
+
+
+@router.get("/views")
+def list_views(user: User = Depends(get_read_principal), db: Session = Depends(get_db)):
+    rows = db.scalars(
+        select(SavedView).where(SavedView.user_id == user.id).order_by(SavedView.name)
+    )
+    return [_view_out(v) for v in rows]
+
+
+@router.post("/views", status_code=201)
+def create_view(
+    body: ViewIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    v = SavedView(user_id=user.id, name=body.name, config=body.config)
+    db.add(v)
+    db.commit()
+    return _view_out(v)
+
+
+@router.delete("/views/{view_id}", status_code=204)
+def delete_view(
+    view_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    v = db.get(SavedView, view_id)
+    if v is None or v.user_id != user.id:
+        raise HTTPException(404, "view not found")
+    db.delete(v)
+    db.commit()
 
 
 # ----------------------------------------------------------------- budgets
