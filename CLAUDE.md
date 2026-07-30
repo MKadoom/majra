@@ -50,7 +50,13 @@ silently refreshes on 401 — pages never handle tokens, and the backend needs n
 CORS. Design rules: colour belongs to the data (one hue per platform, in
 `PLATFORM_COLOR`), numbers use the `.num` class (mono + tabular), and layout is
 RTL-safe — logical properties only, never `left`/`right`. Verify with
-`npm run build` (it typechecks).
+`npm run build` (it typechecks). UI is **shadcn/ui** themed to majra's own Tailwind
+tokens (no parallel CSS-variable layer): components live in `src/components/ui/`
+(button, card, input, badge, table, alert, select, dialog, …) and the barrel
+`src/components/ui/index.tsx` also exports the shared primitives (Panel, Status,
+Spinner, ErrorNote, PlatformDot, ChannelStrip, Empty) rebuilt on shadcn — so
+`import { … } from "@/components/ui"` still resolves. `cn()` is in `src/lib/utils.ts`.
+Tokens/theme live in `tailwind.config.ts` + `globals.css`; keep colour on the data.
 
 ## Running locally
 `cp .env.example .env`, fill `MAJRA_ENCRYPTION_KEY` and `MAJRA_SECRET_KEY`, then
