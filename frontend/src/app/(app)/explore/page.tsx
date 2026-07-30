@@ -21,6 +21,7 @@ import {
   Dataset,
   PRIMARY_MEASURES,
   api,
+  currencyOptions,
   exportUrl,
   platformColor,
   qs,
@@ -81,17 +82,12 @@ export default function ExplorePage() {
   const [fxCurrencies, setFxCurrencies] = useState<string[]>([]);
   const [views, setViews] = useState<SavedView[]>([]);
 
-  // Reporting-currency options: USD plus any currency with a configured rate.
+  // Reporting-currency options: the curated shortlist, limited to those with a
+  // configured rate (the FX table holds ~160, but the dropdown stays short).
   useEffect(() => {
     api
       .get<{ currency: string }[]>("/fx-rates")
-      .then((rs) =>
-        setFxCurrencies(
-          ["USD", ...rs.map((r) => r.currency)].filter(
-            (v, i, a) => a.indexOf(v) === i,
-          ),
-        ),
-      )
+      .then((rs) => setFxCurrencies(currencyOptions(rs.map((r) => r.currency))))
       .catch(() => setFxCurrencies(["USD"]));
   }, []);
 

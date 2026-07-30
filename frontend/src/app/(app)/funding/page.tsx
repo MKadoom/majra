@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Empty, ErrorNote, Panel, PlatformDot, Spinner } from "@/components/ui";
-import { api, qs } from "@/lib/api";
+import { api, currencyOptions, qs } from "@/lib/api";
 import { daysAgo } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
 import type { CardCharge, Funding, MetricPage } from "@/lib/types";
@@ -26,10 +26,10 @@ export default function FundingPage() {
     api
       .get<{ currency: string }[]>("/fx-rates")
       .then((rs) => {
-        setFxCurrencies(
-          ["USD", ...rs.map((r) => r.currency)].filter((v, i, a) => a.indexOf(v) === i),
-        );
-        if (rs.length) setCurrency(rs[0].currency); // default to a configured card currency
+        const opts = currencyOptions(rs.map((r) => r.currency));
+        setFxCurrencies(opts);
+        // Prefer SAR (this instance's reporting currency), else USD.
+        setCurrency(opts.includes("SAR") ? "SAR" : "USD");
       })
       .catch(() => {});
   }, []);

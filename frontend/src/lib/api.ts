@@ -98,6 +98,33 @@ export const platformLabel = (p: string) => PLATFORM_LABEL[p] ?? p;
 /** Which platforms feed each dataset — mirrors the connectors' `dataset`. */
 export const AD_PLATFORMS = ["meta", "google_ads", "tiktok", "snapchat", "whatsapp"];
 
+/**
+ * Reporting-currency shortlist for the currency selectors. The FX table holds
+ * ~160 rates (auto-fetched), but a dropdown shouldn't list them all — this is
+ * the Gulf + majors set most instances report in. SAR is first so it's the
+ * default pick. Any of these that has a configured rate is shown; USD is always
+ * available as the base.
+ */
+export const CURRENCY_CHOICES = [
+  "SAR",
+  "USD",
+  "AED",
+  "EUR",
+  "GBP",
+  "EGP",
+  "KWD",
+  "QAR",
+  "BHD",
+  "OMR",
+  "JOD",
+];
+
+/** Build the selector list: curated choices that have a rate, in curated order. */
+export function currencyOptions(available: string[]): string[] {
+  const have = new Set(["USD", ...available]);
+  return CURRENCY_CHOICES.filter((c) => have.has(c));
+}
+
 export type Dataset = "ads" | "web" | "social" | "tags";
 
 export const DATASET_ENDPOINT: Record<Exclude<Dataset, "tags">, string> = {
