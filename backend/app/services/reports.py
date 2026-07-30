@@ -77,6 +77,7 @@ def run_report(db: Session, report: SavedReport, now: datetime | None = None) ->
         group_by=params.get("group_by"),
         sort=params.get("sort"),
         limit=exports.cap(),
+        user_id=report.user_id,
     )
 
     kind = (report.destination or {}).get("kind", "unknown")

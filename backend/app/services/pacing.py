@@ -31,6 +31,7 @@ def _mtd_spend(db: Session, budget: Budget, first: date, today: date) -> float:
         platforms=[budget.platform] if budget.platform else None,
         account_ids=[budget.account_id] if budget.account_id else None,
         reporting_currency=budget.currency or "USD",
+        user_id=budget.user_id,
     )
     return float(res["data"][0]["spend"]) if res["data"] else 0.0
 

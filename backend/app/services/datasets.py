@@ -25,6 +25,7 @@ def run_dataset_query(
     group_by: list[str] | None = None,
     sort: str | None = None,
     limit: int = 100_000,
+    user_id: int | None = None,
 ) -> list[dict]:
     """Run the query and return every row (up to `limit`), not a page."""
     if dataset not in DATASETS:
@@ -43,6 +44,7 @@ def run_dataset_query(
             sort=sort,
             page=1,
             page_size=limit,
+            user_id=user_id,
         )
     elif dataset == "web":
         page = query_web_metrics(
@@ -54,6 +56,7 @@ def run_dataset_query(
             sort=sort,
             page=1,
             page_size=limit,
+            user_id=user_id,
         )
     else:
         page = query_social_metrics(
@@ -65,5 +68,6 @@ def run_dataset_query(
             sort=sort,
             page=1,
             page_size=limit,
+            user_id=user_id,
         )
     return page["data"]

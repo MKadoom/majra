@@ -493,3 +493,37 @@ def test_connection_soft_delete_and_restore(auth_client, db, connection):
     assert any(c["id"] == connection.id
                for c in auth_client.get("/connections").json())
     assert auth_client.get("/metrics", params=params).json()["data"][0]["spend"] > 0
+
+
+def test_metrics_scoped_per_user(db):
+    """query_metrics with user_id returns only that user's facts (tenant isolation)."""
+    from app.core.security import hash_password
+    from app.models import User
+    from app.services.metrics import query_metrics
+
+    ua = User(email="tenant-a@x.com", password_hash=hash_password("p"))
+    ub = User(email="tenant-b@x.com", password_hash=hash_password("p"))
+    db.add_all([ua, ub])
+    db.flush()
+    ca = Connection(user_id=ua.id, platform="meta", name="A", encrypted_tokens=b"")
+    cb = Connection(user_id=ub.id, platform="meta", name="B", encrypted_tokens=b"")
+    db.add_all([ca, cb])
+    db.flush()
+    aa = Account(connection_id=ca.id, platform="meta", external_id="ta1", name="AA")
+    ab = Account(connection_id=cb.id, platform="meta", external_id="tb1", name="BB")
+    db.add_all([aa, ab])
+    db.flush()
+
+    def row(acc, amt):
+        return FactAdPerformance(
+            date=date(2026, 6, 1), platform="meta", account_id=acc.id,
+            breakdown="none", spend=amt, currency="USD", impressions=1, clicks=0,
+            conversions=0, conversion_value=0, video_views=0, leads=0, purchases=0)
+
+    db.add_all([row(aa, 100), row(ab, 999)])
+    db.commit()
+
+    p = {"date_from": date(2026, 6, 1), "date_to": date(2026, 6, 1)}
+    assert query_metrics(db, **p, user_id=ua.id)["data"][0]["spend"] == 100.0
+    assert query_metrics(db, **p, user_id=ub.id)["data"][0]["spend"] == 999.0
+    assert query_metrics(db, **p)["data"][0]["spend"] == 1099.0  # unscoped = all

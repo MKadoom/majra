@@ -63,6 +63,7 @@ def query_metrics(
     page: int = 1,
     page_size: int = 100,
     reporting_currency: str | None = None,
+    user_id: int | None = None,
 ) -> dict:
     group_by = [g for g in (group_by or []) if g in GROUPABLE]
     # The 1000-row cap lives at the HTTP boundary (Query(le=1000)); exports
@@ -96,10 +97,13 @@ def query_metrics(
 
     stmt = select(*cols, *aggs).select_from(F)
     stmt = stmt.join(Account, Account.id == F.account_id)
-    # Exclude facts from soft-deleted connections (recycle bin).
+    # Scope to this user's connections (tenant isolation) and exclude facts from
+    # soft-deleted connections (recycle bin).
     stmt = stmt.join(Connection, Connection.id == Account.connection_id).where(
         Connection.deleted_at.is_(None)
     )
+    if user_id is not None:
+        stmt = stmt.where(Connection.user_id == user_id)
     if "campaign" in group_by:
         stmt = stmt.join(Campaign, Campaign.id == F.campaign_id, isouter=True)
     if "adset" in group_by:

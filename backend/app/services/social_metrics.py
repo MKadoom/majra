@@ -9,7 +9,7 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Account
+from app.models import Account, Connection
 from app.models import FactSocialPerformance as S
 
 GROUPABLE = {
@@ -39,6 +39,7 @@ def query_social_metrics(
     sort: str | None = None,
     page: int = 1,
     page_size: int = 100,
+    user_id: int | None = None,
 ) -> dict:
     group_by = [g for g in (group_by or []) if g in GROUPABLE]
     # The 1000-row cap lives at the HTTP boundary (Query(le=1000)); exports
@@ -49,6 +50,11 @@ def query_social_metrics(
     aggs = [expr.label(name) for name, expr in SUMS.items()]
 
     stmt = select(*cols, *aggs).select_from(S).join(Account, Account.id == S.account_id)
+    stmt = stmt.join(Connection, Connection.id == Account.connection_id).where(
+        Connection.deleted_at.is_(None)
+    )
+    if user_id is not None:
+        stmt = stmt.where(Connection.user_id == user_id)
     stmt = stmt.where(S.date >= date_from, S.date <= date_to)
     if account_ids:
         stmt = stmt.where(S.account_id.in_(account_ids))

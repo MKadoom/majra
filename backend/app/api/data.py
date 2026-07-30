@@ -241,6 +241,7 @@ def metrics(
         page=page,
         page_size=page_size,
         reporting_currency=currency,
+        user_id=user.id,
     )
 
 
@@ -439,6 +440,7 @@ def web_metrics(
         sort=sort,
         page=page,
         page_size=page_size,
+        user_id=user.id,
     )
 
 
@@ -467,6 +469,7 @@ def social_metrics(
         sort=sort,
         page=page,
         page_size=page_size,
+        user_id=user.id,
     )
 
 
@@ -571,6 +574,7 @@ def export(
         group_by=group_by,
         sort=sort,
         limit=exports.cap(),
+        user_id=user.id,
     )
     if total:
         tr = exports.total_row(rows)
