@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Empty, ErrorNote, Panel, Spinner, Status } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, CURRENCY_CHOICES } from "@/lib/api";
 import { useLocale } from "@/lib/locale";
 import type { SavedReport } from "@/lib/types";
 
@@ -84,10 +84,13 @@ export default function ReportsPage() {
                     {t("rep.summary", {
                       dataset: t(`dataset.${r.dataset}`),
                       days: String(r.params.last_days ?? 30),
-                      cadence: t("rep.daily"),
+                      cadence: t(`rep.${r.cadence === "weekly" ? "weekly" : "daily"}`),
                       hour: String(r.hour_utc).padStart(2, "0"),
                       dest: t(`rep.dest.${r.destination.kind}`),
                     })}
+                    {typeof r.params.currency === "string" && r.params.currency
+                      ? ` · ${t("rep.inCurrency", { ccy: r.params.currency })}`
+                      : ""}
                   </p>
                   {r.last_error && (
                     <p className="mt-1 text-sm text-bad">{r.last_error}</p>
@@ -137,6 +140,9 @@ function NewReport({ onDone }: { onDone: () => void }) {
   const [dataset, setDataset] = useState<"ads" | "web" | "social">("ads");
   const [lastDays, setLastDays] = useState(30);
   const [hour, setHour] = useState(6);
+  const [cadence, setCadence] = useState<"daily" | "weekly">("daily");
+  const [currency, setCurrency] = useState("SAR");
+  const [total, setTotal] = useState(true);
   const [kind, setKind] = useState<Kind>("google_sheets");
 
   const [sheetId, setSheetId] = useState("");
@@ -171,9 +177,15 @@ function NewReport({ onDone }: { onDone: () => void }) {
       await api.post("/reports", {
         name,
         dataset,
-        params: { last_days: lastDays, group_by: [dataset === "ads" ? "platform" : "date"] },
+        params: {
+          last_days: lastDays,
+          group_by: [dataset === "ads" ? "platform" : "date"],
+          total,
+          // Only ads convert; "" means leave each account in its own currency.
+          ...(dataset === "ads" && currency ? { currency } : {}),
+        },
         destination,
-        cadence: "daily",
+        cadence,
         hour_utc: hour,
       });
       onDone();
@@ -247,7 +259,51 @@ function NewReport({ onDone }: { onDone: () => void }) {
               onChange={(e) => setHour(Number(e.target.value))}
             />
           </div>
+          <div>
+            <label htmlFor="rcadence" className="eyebrow mb-1.5 block">
+              {t("rep.cadence")}
+            </label>
+            <select
+              id="rcadence"
+              className="field"
+              value={cadence}
+              onChange={(e) => setCadence(e.target.value as typeof cadence)}
+            >
+              <option value="daily">{t("rep.daily")}</option>
+              <option value="weekly">{t("rep.weekly")}</option>
+            </select>
+          </div>
+          {dataset === "ads" && (
+            <div>
+              <label htmlFor="rccy" className="eyebrow mb-1.5 block">
+                {t("rep.currency")}
+              </label>
+              <select
+                id="rccy"
+                className="field"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+              >
+                <option value="">{t("rep.currencyRaw")}</option>
+                {CURRENCY_CHOICES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={total}
+            onChange={(e) => setTotal(e.target.checked)}
+          />
+          <span>{t("rep.totals")}</span>
+          <span className="text-muted">— {t("rep.totalsHint")}</span>
+        </label>
 
         <div>
           <span className="eyebrow mb-1.5 block">{t("rep.deliverTo")}</span>

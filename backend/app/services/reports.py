@@ -78,11 +78,16 @@ def run_report(db: Session, report: SavedReport, now: datetime | None = None) ->
         sort=params.get("sort"),
         limit=exports.cap(),
         user_id=report.user_id,
+        reporting_currency=params.get("currency"),
     )
+
+    # A summary Total row (on by default — most people reading a report want the
+    # bottom line). Additive columns summed, ratios recomputed from the sums.
+    total = exports.total_row(rows) if params.get("total", True) else None
 
     kind = (report.destination or {}).get("kind", "unknown")
     try:
-        deliver(report, rows, date_from, date_to)
+        deliver(report, rows, date_from, date_to, total)
         report.last_status = "success"
         report.last_error = None
         REPORTS.labels(kind, "success").inc()
@@ -115,17 +120,23 @@ def run_due_reports(db: Session, now: datetime | None = None) -> list[int]:
 
 
 # -------------------------------------------------------------- delivery
-def deliver(report: SavedReport, rows: list[dict], date_from: date, date_to: date):
+def deliver(
+    report: SavedReport,
+    rows: list[dict],
+    date_from: date,
+    date_to: date,
+    total: dict | None = None,
+):
     dest = report.destination or {}
     kind = dest.get("kind")
     if kind == "google_sheets":
-        return deliver_google_sheets(dest, rows)
+        return deliver_google_sheets(dest, rows, total)
     if kind == "webhook":
-        return deliver_webhook(report, dest, rows, date_from, date_to)
+        return deliver_webhook(report, dest, rows, date_from, date_to, total)
     if kind == "email":
-        return deliver_email(report, dest, rows, date_from, date_to)
+        return deliver_email(report, dest, rows, date_from, date_to, total)
     if kind in ("slack", "teams"):
-        return deliver_chat(report, dest, rows, date_from, date_to)
+        return deliver_chat(report, dest, rows, date_from, date_to, total)
     raise PermanentError(f"unknown report destination '{kind}'")
 
 
@@ -138,7 +149,12 @@ def _cell_s(v) -> str:
 
 
 def _summary_text(
-    report: SavedReport, rows: list[dict], date_from: date, date_to: date, top: int
+    report: SavedReport,
+    rows: list[dict],
+    date_from: date,
+    date_to: date,
+    top: int,
+    total: dict | None = None,
 ) -> str:
     head = (
         f"*{report.name}* — {report.dataset} · {date_from} → {date_to} "
@@ -149,13 +165,20 @@ def _summary_text(
     cols = list(rows[0].keys())[:6]  # keep it readable in a chat message
     lines = [" | ".join(cols)]
     lines += [" | ".join(_cell_s(r.get(c)) for c in cols) for r in rows[:top]]
+    if total:  # pin the bottom line, whatever the row count
+        lines.append(" | ".join(_cell_s(total.get(c)) for c in cols))
     table = "```\n" + "\n".join(lines) + "\n```"
     more = f"\n…and {len(rows) - top} more" if len(rows) > top else ""
     return head + "\n" + table + more
 
 
 def deliver_chat(
-    report: SavedReport, dest: dict, rows: list[dict], date_from: date, date_to: date
+    report: SavedReport,
+    dest: dict,
+    rows: list[dict],
+    date_from: date,
+    date_to: date,
+    total: dict | None = None,
 ) -> None:
     """Slack / Microsoft Teams via an incoming-webhook URL. Both render a simple
     {"text": …} payload, so one path serves both — a compact summary with the
@@ -163,7 +186,7 @@ def deliver_chat(
     url = dest.get("url")
     if not url:
         raise PermanentError(f"{dest.get('kind')} destination needs a webhook url")
-    text = _summary_text(report, rows, date_from, date_to, int(dest.get("top", 10)))
+    text = _summary_text(report, rows, date_from, date_to, int(dest.get("top", 10)), total)
     res = httpx.post(url, json={"text": text}, timeout=30)
     if res.status_code >= 400:
         raise PermanentError(
@@ -171,7 +194,7 @@ def deliver_chat(
         )
 
 
-def deliver_google_sheets(dest: dict, rows: list[dict]) -> None:
+def deliver_google_sheets(dest: dict, rows: list[dict], total: dict | None = None) -> None:
     sa = dest.get("service_account")
     sheet_id = dest.get("spreadsheet_id")
     if not sa or not sheet_id:
@@ -183,7 +206,8 @@ def deliver_google_sheets(dest: dict, rows: list[dict]) -> None:
     headers = {"Authorization": f"Bearer {token}"}
 
     cols = list(rows[0].keys()) if rows else []
-    values = [cols] + [[_cell(r.get(c)) for c in cols] for r in rows]
+    body_rows = rows + [total] if total else rows
+    values = [cols] + [[_cell(r.get(c)) for c in cols] for r in body_rows]
 
     # Clear the tab first, so a shorter result doesn't leave stale rows behind.
     clear = httpx.post(
@@ -213,7 +237,12 @@ def sign(secret: str, body: bytes) -> str:
 
 
 def deliver_webhook(
-    report: SavedReport, dest: dict, rows: list[dict], date_from: date, date_to: date
+    report: SavedReport,
+    dest: dict,
+    rows: list[dict],
+    date_from: date,
+    date_to: date,
+    total: dict | None = None,
 ) -> None:
     url = dest.get("url")
     if not url:
@@ -223,7 +252,9 @@ def deliver_webhook(
         "dataset": report.dataset,
         "date_from": str(date_from),
         "date_to": str(date_to),
-        "rows": rows,
+        "currency": (report.params or {}).get("currency"),
+        "rows": rows,  # kept clean for machine parsing
+        "total": total,  # the summary row, separate so it won't break row loops
     }
     body = json.dumps(payload, default=str).encode()
     headers = {"content-type": "application/json"}
@@ -236,7 +267,12 @@ def deliver_webhook(
 
 
 def deliver_email(
-    report: SavedReport, dest: dict, rows: list[dict], date_from: date, date_to: date
+    report: SavedReport,
+    dest: dict,
+    rows: list[dict],
+    date_from: date,
+    date_to: date,
+    total: dict | None = None,
 ) -> None:
     to = dest.get("to")
     if not to:
@@ -244,15 +280,18 @@ def deliver_email(
     if not settings.smtp_host:
         raise PermanentError("email delivery needs MAJRA_SMTP_HOST to be set")
 
+    ccy = (report.params or {}).get("currency")
     msg = EmailMessage()
     msg["Subject"] = f"{report.name} · {date_from} → {date_to}"
     msg["From"] = settings.smtp_from
     msg["To"] = to
     msg.set_content(
-        f"{report.name}\n{len(rows)} rows, {date_from} to {date_to}.\n"
-        "The full table is attached as CSV."
+        f"{report.name}\n{len(rows)} rows, {date_from} to {date_to}"
+        + (f", in {ccy}" if ccy else "")
+        + ".\nThe full table is attached as CSV (with a Total row)."
     )
-    csv_bytes = "".join(exports.stream_csv(rows)).encode()
+    csv_rows = rows + [total] if total else rows
+    csv_bytes = "".join(exports.stream_csv(csv_rows)).encode()
     msg.add_attachment(
         csv_bytes,
         maintype="text",

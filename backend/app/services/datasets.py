@@ -26,8 +26,14 @@ def run_dataset_query(
     sort: str | None = None,
     limit: int = 100_000,
     user_id: int | None = None,
+    reporting_currency: str | None = None,
 ) -> list[dict]:
-    """Run the query and return every row (up to `limit`), not a page."""
+    """Run the query and return every row (up to `limit`), not a page.
+
+    `reporting_currency` (ads only) converts every account's spend/value into one
+    currency via the FX table, so a blended report reads in a single unit instead
+    of a mix of SAR/USD/… — matches the Explore currency selector.
+    """
     if dataset not in DATASETS:
         raise ValueError(f"dataset must be one of {DATASETS}")
 
@@ -45,6 +51,7 @@ def run_dataset_query(
             page=1,
             page_size=limit,
             user_id=user_id,
+            reporting_currency=reporting_currency,
         )
     elif dataset == "web":
         page = query_web_metrics(

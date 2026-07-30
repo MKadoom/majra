@@ -299,6 +299,13 @@ const en: Dict = {
   "rep.loadFailed": "Could not load your reports.",
   "rep.badSaJson": "That service-account JSON isn't valid. Paste the whole key file.",
   "rep.daily": "daily",
+  "rep.weekly": "weekly",
+  "rep.cadence": "How often",
+  "rep.currency": "Reporting currency",
+  "rep.currencyRaw": "Each account's own currency",
+  "rep.totals": "Add a Total row",
+  "rep.totalsHint": "Appends a summary row with the totals (spend, clicks…) and recomputed rates.",
+  "rep.inCurrency": "in {ccy}",
 
   // settings
   "set.title": "Settings",
@@ -608,6 +615,13 @@ const ar: Dict = {
   "rep.loadFailed": "تعذّر تحميل تقاريرك.",
   "rep.badSaJson": "ملف حساب الخدمة غير صالح. الصق الملف كاملًا.",
   "rep.daily": "يومي",
+  "rep.weekly": "أسبوعي",
+  "rep.cadence": "التكرار",
+  "rep.currency": "عملة التقرير",
+  "rep.currencyRaw": "عملة كل حساب كما هي",
+  "rep.totals": "إضافة صف الإجمالي",
+  "rep.totalsHint": "يضيف صفًا بالإجماليات (الإنفاق، النقرات…) مع إعادة حساب المعدلات.",
+  "rep.inCurrency": "بعملة {ccy}",
 
   // settings
   "set.title": "الإعدادات",

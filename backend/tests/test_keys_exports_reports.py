@@ -390,3 +390,39 @@ def test_export_total_row():
     assert t["cpc"] == 4.0          # 400/100
     assert t["roas"] == 5.0         # 2000/400
     assert total_row([]) is None
+
+
+def test_report_total_row_reaches_destinations():
+    """A report's Total row is appended to sheets/email output and sent as a
+    separate `total` field on the webhook payload (so row loops stay clean),
+    and pinned to the chat summary."""
+    import json as _json
+    from datetime import date
+
+    import httpx
+    import respx
+
+    from app.models import SavedReport
+    from app.services.exports import total_row
+    from app.services.reports import _summary_text, deliver_webhook
+
+    rep = SavedReport(name="Spend", dataset="ads", params={"currency": "SAR"})
+    rows = [{"platform": "meta", "spend": 10.0}, {"platform": "snapchat", "spend": 20.0}]
+    total = total_row(rows)
+    assert total["spend"] == 30.0
+
+    # Chat summary includes the pinned total line.
+    text = _summary_text(rep, rows, date(2026, 6, 1), date(2026, 6, 30), 10, total)
+    assert "Total" in text and "30.00" in text
+
+    # Webhook: rows stay clean, total + currency are separate fields.
+    with respx.mock:
+        route = respx.post("https://hooks.test/wh").mock(return_value=httpx.Response(200))
+        deliver_webhook(
+            rep, {"kind": "webhook", "url": "https://hooks.test/wh"},
+            rows, date(2026, 6, 1), date(2026, 6, 30), total,
+        )
+        body = _json.loads(route.calls[0].request.content)
+        assert len(body["rows"]) == 2          # no Total mixed into rows
+        assert body["total"]["spend"] == 30.0
+        assert body["currency"] == "SAR"
