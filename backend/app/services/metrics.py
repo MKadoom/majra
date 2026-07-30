@@ -10,7 +10,7 @@ from datetime import date
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.models import Account, Ad, Adset, Campaign, FxRate
+from app.models import Account, Ad, Adset, Campaign, Connection, FxRate
 from app.models import FactAdPerformance as F
 
 GROUPABLE = {
@@ -96,6 +96,10 @@ def query_metrics(
 
     stmt = select(*cols, *aggs).select_from(F)
     stmt = stmt.join(Account, Account.id == F.account_id)
+    # Exclude facts from soft-deleted connections (recycle bin).
+    stmt = stmt.join(Connection, Connection.id == Account.connection_id).where(
+        Connection.deleted_at.is_(None)
+    )
     if "campaign" in group_by:
         stmt = stmt.join(Campaign, Campaign.id == F.campaign_id, isouter=True)
     if "adset" in group_by:

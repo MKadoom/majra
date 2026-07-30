@@ -48,6 +48,12 @@ class Connection(Base):
     # skip read-only / empty ones — which also conserves a platform's per-user
     # API rate budget (e.g. Meta Development-mode limits).
     synced_account_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Soft delete: when set, the connection is hidden from listings, its
+    # schedules don't fire, and its facts drop out of metrics — but nothing is
+    # destroyed, so it can be restored. Recoverable by design.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped["User"] = relationship()

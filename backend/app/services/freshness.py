@@ -27,7 +27,9 @@ def freshness_report(
     yesterday = today - timedelta(days=1)
     out: list[dict] = []
     conns = db.scalars(
-        select(Connection).where(Connection.status != "disabled").order_by(Connection.id)
+        select(Connection)
+        .where(Connection.status != "disabled", Connection.deleted_at.is_(None))
+        .order_by(Connection.id)
     )
     for c in conns:
         wm = watermark(db, c.id, "none")

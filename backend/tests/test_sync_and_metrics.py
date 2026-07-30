@@ -469,3 +469,27 @@ def test_saved_views_crud(auth_client):
 
     assert auth_client.delete(f"/views/{vid}").status_code == 204
     assert not any(v["id"] == vid for v in auth_client.get("/views").json())
+
+
+@respx.mock
+def test_connection_soft_delete_and_restore(auth_client, db, connection):
+    """Soft-delete hides a connection + drops its facts from metrics; restore
+    brings both back — nothing is destroyed."""
+    _mock_graph_two_accounts()
+    body = {"connection_id": connection.id, "date_from": "2026-06-01",
+            "date_to": "2026-06-01", "breakdown": "none"}
+    auth_client.post("/syncs", json=body)
+    params = {"date_from": "2026-06-01", "date_to": "2026-06-01"}
+    assert auth_client.get("/metrics", params=params).json()["data"][0]["spend"] > 0
+
+    assert auth_client.delete(f"/connections/{connection.id}").status_code == 204
+    assert not any(c["id"] == connection.id
+                   for c in auth_client.get("/connections").json())
+    assert any(c["id"] == connection.id
+               for c in auth_client.get("/connections", params={"deleted": True}).json())
+    assert auth_client.get("/metrics", params=params).json()["data"] == []  # facts hidden
+
+    assert auth_client.post(f"/connections/{connection.id}/restore").status_code == 200
+    assert any(c["id"] == connection.id
+               for c in auth_client.get("/connections").json())
+    assert auth_client.get("/metrics", params=params).json()["data"][0]["spend"] > 0

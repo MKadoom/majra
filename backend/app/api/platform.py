@@ -105,11 +105,17 @@ def callback(
 
 @router.get("/connections")
 def list_connections(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    deleted: bool = False,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    rows = db.scalars(
-        select(Connection).where(Connection.user_id == user.id).order_by(Connection.id)
+    """Active connections by default; pass `deleted=true` to list the ones in the
+    recycle bin (soft-deleted, restorable)."""
+    stmt = select(Connection).where(Connection.user_id == user.id)
+    stmt = stmt.where(
+        Connection.deleted_at.isnot(None) if deleted else Connection.deleted_at.is_(None)
     )
+    rows = db.scalars(stmt.order_by(Connection.id))
     return [
         {
             "id": c.id,
@@ -117,10 +123,41 @@ def list_connections(
             "name": c.name,
             "status": c.status,
             "synced_account_ids": c.synced_account_ids,
+            "deleted_at": c.deleted_at,
             "created_at": c.created_at,
         }
         for c in rows
     ]
+
+
+@router.delete("/connections/{connection_id}", status_code=204)
+def delete_connection(
+    connection_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Soft-delete: hides the connection and drops its data from metrics, but
+    keeps everything so it can be restored."""
+    conn = db.get(Connection, connection_id)
+    if conn is None or conn.user_id != user.id:
+        raise HTTPException(404, "connection not found")
+    conn.deleted_at = datetime.now(UTC)
+    db.commit()
+
+
+@router.post("/connections/{connection_id}/restore")
+def restore_connection(
+    connection_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bring a soft-deleted connection back."""
+    conn = db.get(Connection, connection_id)
+    if conn is None or conn.user_id != user.id:
+        raise HTTPException(404, "connection not found")
+    conn.deleted_at = None
+    db.commit()
+    return {"id": conn.id, "name": conn.name, "status": conn.status}
 
 
 class SyncedAccounts(BaseModel):

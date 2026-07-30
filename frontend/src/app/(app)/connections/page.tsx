@@ -25,11 +25,12 @@ const STRIP_FROM = daysAgo(14);
 const STRIP_TO = daysAgo(1);
 
 export default function ConnectionsPage() {
-  const { t } = useLocale();
+  const { t, p: pName } = useLocale();
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [deleted, setDeleted] = useState<Connection[]>([]);
   const [freshness, setFreshness] = useState<Record<number, Freshness>>({});
   const [coverage, setCoverage] = useState<Record<string, Set<string>>>({});
   const [loading, setLoading] = useState(true);
@@ -40,17 +41,19 @@ export default function ConnectionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [p, c, a, s, f] = await Promise.all([
+      const [p, c, a, s, f, d] = await Promise.all([
         api.get<{ platforms: PlatformInfo[] }>("/platforms"),
         api.get<Connection[]>("/connections"),
         api.get<Account[]>("/accounts"),
         api.get<Schedule[]>("/schedules"),
         api.get<Freshness[]>("/freshness"),
+        api.get<Connection[]>("/connections?deleted=true"),
       ]);
       setPlatforms(p.platforms);
       setConnections(c);
       setAccounts(a);
       setSchedules(s);
+      setDeleted(d);
       setFreshness(Object.fromEntries(f.map((x) => [x.connection_id, x])));
 
       // Daily coverage for the channel strips: one query per dataset shape,
@@ -125,6 +128,30 @@ export default function ConnectionsPage() {
             />
           ))}
         </div>
+      )}
+
+      {deleted.length > 0 && (
+        <Panel title={t("conn.removed")}>
+          <p className="mb-3 text-sm text-muted">{t("conn.removedHint")}</p>
+          <ul className="flex flex-col gap-2">
+            {deleted.map((c) => (
+              <li key={c.id} className="flex items-center gap-3 text-sm">
+                <PlatformDot platform={c.platform} />
+                <span className="shrink-0">{pName(c.platform)}</span>
+                <span className="min-w-0 truncate text-muted">{c.name}</span>
+                <button
+                  className="btn-quiet ms-auto"
+                  onClick={async () => {
+                    await api.post(`/connections/${c.id}/restore`, {});
+                    void load();
+                  }}
+                >
+                  {t("conn.restore")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
       )}
     </div>
   );
@@ -282,6 +309,23 @@ function ConnectionCard({
             {t("conn.chooseAccounts")} ({onCount}/{accounts.length})
           </button>
         )}
+
+        <button
+          className="text-sm text-muted hover:text-bad"
+          onClick={async () => {
+            if (!window.confirm(t("conn.removeConfirm"))) return;
+            setBusy(true);
+            try {
+              await api.del(`/connections/${connection.id}`);
+              onChange();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          disabled={busy}
+        >
+          {t("conn.remove")}
+        </button>
 
         <span className="ms-auto text-sm text-muted">
           {schedule
