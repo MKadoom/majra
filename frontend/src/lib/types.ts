@@ -17,6 +17,22 @@ export type Connection = {
   created_at: string;
 };
 
+export type CardCharge = {
+  id: number;
+  date: string;
+  amount: number;
+  currency: string;
+  note: string | null;
+};
+
+export type Funding = {
+  currency: string;
+  total_charged: number;
+  total_spent: number;
+  balance: number;
+  daily: { date: string; spend: number; charged: number }[];
+};
+
 export type SavedView = {
   id: number;
   name: string;
