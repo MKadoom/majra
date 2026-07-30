@@ -227,6 +227,18 @@ Derived metrics are null when their denominator is zero.
   over SMTP), and `slack` / `teams` (a compact summary posted to an
   incoming-webhook URL). Celery beat runs due reports every 10 minutes. Secrets and service
   accounts are never echoed back by the API.
+- **Report `params`** (a free JSONB dict, same keys the query endpoints take) also
+  carries two delivery-shaping options, both flowing through `run_dataset_query`:
+  - `currency` (ads only) — a reporting currency; spend/value are converted via
+    `app.fx_rates` exactly like the Explore selector, so a blended report reads in
+    one unit. Omit to leave each account in its own currency.
+  - `total` (default `true`) — append a summary Total row (additive columns summed,
+    the five ad ratios recomputed from the sums, never averaged). Sheets and the
+    email CSV get it as a trailing row; the webhook payload carries it as a
+    separate `total` field (plus a top-level `currency`) so `rows` stays clean for
+    parsers; the chat summary pins it under the table.
+  `cadence` is `daily | weekly` for reports (the schedule table's wider set does
+  not apply here).
 - The three query services no longer clamp `page_size` internally — the 1000-row
   cap lives at the HTTP boundary (`Query(le=1000)`), so exports can legitimately
   ask for far more without being silently truncated.
