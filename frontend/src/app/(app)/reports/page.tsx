@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Empty, ErrorNote, Panel, Spinner, Status } from "@/components/ui";
+import { FileText } from "lucide-react";
+
+import { Empty, ErrorNote, PageHeader, Panel, Spinner, Status } from "@/components/ui";
 import { api, CURRENCY_CHOICES } from "@/lib/api";
 import { useLocale } from "@/lib/locale";
 import type { SavedReport } from "@/lib/types";
@@ -44,15 +46,11 @@ export default function ReportsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{t("rep.title")}</h1>
-          <p className="mt-0.5 text-sm text-muted">{t("rep.subtitle")}</p>
-        </div>
+      <PageHeader icon={FileText} title={t("rep.title")} subtitle={t("rep.subtitle")}>
         <button className="btn-primary" onClick={() => setAdding((v) => !v)}>
           {adding ? t("common.close") : t("rep.new")}
         </button>
-      </header>
+      </PageHeader>
 
       {error && <ErrorNote message={error} />}
 

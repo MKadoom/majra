@@ -1,8 +1,17 @@
 "use client";
 
+import { RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
-import { Empty, ErrorNote, Panel, PlatformDot, Spinner, Status } from "@/components/ui";
+import {
+  Empty,
+  ErrorNote,
+  PageHeader,
+  Panel,
+  PlatformDot,
+  Spinner,
+  Status,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { useLocale } from "@/lib/locale";
 import type { Connection, SyncJob, SyncLog } from "@/lib/types";
@@ -58,10 +67,11 @@ export default function JobsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">{t("jobs.title")}</h1>
-        <p className="mt-0.5 text-sm text-muted">{t("jobs.subtitle")}</p>
-      </header>
+      <PageHeader
+        icon={RefreshCw}
+        title={t("jobs.title")}
+        subtitle={t("jobs.subtitle")}
+      />
 
       {error && <ErrorNote message={error} />}
 

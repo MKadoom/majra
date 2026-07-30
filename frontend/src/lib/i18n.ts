@@ -309,6 +309,7 @@ const en: Dict = {
 
   // settings
   "set.title": "Settings",
+  "set.subtitle": "Your account, API keys, and currency rates.",
   "set.fxTitle": "Currency rates",
   "set.fxBlurb": "Set an exchange rate per currency (USD value of one unit) so Explore can blend mixed-currency accounts into one reporting currency. USD is always 1.",
   "set.fxSave": "Save rate",
@@ -625,6 +626,7 @@ const ar: Dict = {
 
   // settings
   "set.title": "الإعدادات",
+  "set.subtitle": "حسابك ومفاتيح الـAPI وأسعار العملات.",
   "set.fxTitle": "أسعار العملات",
   "set.fxBlurb": "حدّد سعر صرف لكل عملة (قيمة الوحدة بالدولار) حتى تتمكن لوحة الاستكشاف من دمج الحسابات متعددة العملات في عملة تقارير واحدة. الدولار دائمًا 1.",
   "set.fxSave": "حفظ السعر",

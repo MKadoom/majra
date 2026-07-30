@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Empty, ErrorNote, Panel, PlatformDot, Spinner } from "@/components/ui";
+import { Target } from "lucide-react";
+
+import { Empty, ErrorNote, PageHeader, Panel, PlatformDot, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useLocale } from "@/lib/locale";
 import type { Account, Budget, Pacing } from "@/lib/types";
@@ -53,10 +55,11 @@ export default function BudgetsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">{t("budget.title")}</h1>
-        <p className="mt-0.5 text-sm text-muted">{t("budget.subtitle")}</p>
-      </header>
+      <PageHeader
+        icon={Target}
+        title={t("budget.title")}
+        subtitle={t("budget.subtitle")}
+      />
 
       {error && <ErrorNote message={error} />}
 

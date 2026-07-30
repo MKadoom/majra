@@ -1,5 +1,6 @@
 "use client";
 
+import { Compass } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -12,7 +13,15 @@ import {
   YAxis,
 } from "recharts";
 
-import { Empty, ErrorNote, Panel, PlatformDot, Spinner, Status } from "@/components/ui";
+import {
+  Empty,
+  ErrorNote,
+  PageHeader,
+  Panel,
+  PlatformDot,
+  Spinner,
+  Status,
+} from "@/components/ui";
 import {
   AD_PLATFORMS,
   DATASET_ENDPOINT,
@@ -268,12 +277,12 @@ export default function ExplorePage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{t("explore.title")}</h1>
-          <p className="mt-0.5 text-sm text-muted">{t(`dataset.${dataset}.note`)}</p>
-        </div>
-        <div className="flex items-end gap-2">
+      <PageHeader
+        icon={Compass}
+        title={t("explore.title")}
+        subtitle={t(`dataset.${dataset}.note`)}
+      >
+        <div className="flex flex-wrap items-end gap-2">
           <div>
             <label htmlFor="from" className="eyebrow mb-1 block">
               {t("common.from")}
@@ -354,7 +363,7 @@ export default function ExplorePage() {
             </button>
           </div>
         </div>
-      </header>
+      </PageHeader>
 
       {/* Dataset switcher — the four shapes the pipeline produces. */}
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Dataset">

@@ -2,7 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { ChannelStrip, Empty, ErrorNote, Panel, PlatformDot, Spinner, Status } from "@/components/ui";
+import { Plug } from "lucide-react";
+
+import {
+  ChannelStrip,
+  Empty,
+  ErrorNote,
+  PageHeader,
+  Panel,
+  PlatformDot,
+  Spinner,
+  Status,
+} from "@/components/ui";
 import { api, qs } from "@/lib/api";
 import { daysAgo } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
@@ -87,15 +98,11 @@ export default function ConnectionsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{t("conn.title")}</h1>
-          <p className="mt-0.5 text-sm text-muted">{t("conn.subtitle")}</p>
-        </div>
+      <PageHeader icon={Plug} title={t("conn.title")} subtitle={t("conn.subtitle")}>
         <button className="btn-primary" onClick={() => setAdding((v) => !v)}>
           {adding ? t("common.close") : t("conn.add")}
         </button>
-      </header>
+      </PageHeader>
 
       {error && <ErrorNote message={error} />}
 

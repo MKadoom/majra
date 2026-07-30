@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { Empty, ErrorNote, Panel, PlatformDot, Spinner } from "@/components/ui";
+import { Wallet } from "lucide-react";
+
+import { Empty, ErrorNote, PageHeader, Panel, PlatformDot, Spinner } from "@/components/ui";
 import { api, currencyOptions, qs } from "@/lib/api";
 import { daysAgo } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
@@ -103,12 +105,8 @@ export default function FundingPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{t("fund.title")}</h1>
-          <p className="mt-0.5 text-sm text-muted">{t("fund.subtitle")}</p>
-        </div>
-        <div className="flex items-end gap-2">
+      <PageHeader icon={Wallet} title={t("fund.title")} subtitle={t("fund.subtitle")}>
+        <div className="flex flex-wrap items-end gap-2">
           <select
             className="field"
             value={currency}
@@ -134,7 +132,7 @@ export default function FundingPage() {
             ))}
           </select>
         </div>
-      </header>
+      </PageHeader>
 
       {error && <ErrorNote message={error} />}
 

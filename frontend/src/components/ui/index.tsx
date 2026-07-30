@@ -24,6 +24,7 @@ export * from "./skeleton";
 export * from "./alert";
 export * from "./select";
 export * from "./dialog";
+export * from "./page-header";
 
 export function Panel({
   title,

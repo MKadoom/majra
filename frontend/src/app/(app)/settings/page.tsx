@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Empty, ErrorNote, Panel, PlatformDot, Spinner } from "@/components/ui";
+import { Settings as SettingsIcon } from "lucide-react";
+
+import { Empty, ErrorNote, PageHeader, Panel, PlatformDot, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useLocale } from "@/lib/locale";
 import type { Account, ApiKey, FxRate } from "@/lib/types";
@@ -71,9 +73,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">{t("set.title")}</h1>
-      </header>
+      <PageHeader icon={SettingsIcon} title={t("set.title")} subtitle={t("set.subtitle")} />
 
       <Panel title={t("set.account")}>
         <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
