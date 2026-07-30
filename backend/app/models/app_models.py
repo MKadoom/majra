@@ -166,6 +166,24 @@ class SavedReport(Base):
     user: Mapped["User"] = relationship()
 
 
+class CardCharge(Base):
+    """A top-up you put on the card that funds ad spend. Summed against ad spend
+    to show the remaining prepaid balance, so the card never runs dry."""
+
+    __tablename__ = "card_charges"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app.users.id"), index=True)
+    date: Mapped[object] = mapped_column(Date)
+    amount: Mapped[float] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship()
+
+
 class SavedView(Base):
     """A named Explore configuration (dataset, platform filter, group-by, date
     window, reporting currency) the user can reopen. `config` is the opaque

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.models import (
     Budget,
+    CardCharge,
     Connection,
     FxRate,
     SavedView,
@@ -243,6 +244,112 @@ def metrics(
         reporting_currency=currency,
         user_id=user.id,
     )
+
+
+# ------------------------------------------------------- card funding ledger
+class CardChargeIn(BaseModel):
+    date: date
+    amount: float = Field(gt=0)
+    currency: str = Field("USD", min_length=3, max_length=8)
+    note: str | None = Field(None, max_length=300)
+
+
+def _charge_out(c: CardCharge) -> dict:
+    return {"id": c.id, "date": c.date, "amount": float(c.amount),
+            "currency": c.currency, "note": c.note}
+
+
+@router.get("/card-charges")
+def list_card_charges(
+    user: User = Depends(get_read_principal), db: Session = Depends(get_db)
+):
+    rows = db.scalars(
+        select(CardCharge)
+        .where(CardCharge.user_id == user.id)
+        .order_by(CardCharge.date.desc(), CardCharge.id.desc())
+    )
+    return [_charge_out(c) for c in rows]
+
+
+@router.post("/card-charges", status_code=201)
+def create_card_charge(
+    body: CardChargeIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    c = CardCharge(user_id=user.id, date=body.date, amount=body.amount,
+                   currency=body.currency.upper(), note=body.note)
+    db.add(c)
+    db.commit()
+    return _charge_out(c)
+
+
+@router.delete("/card-charges/{charge_id}", status_code=204)
+def delete_card_charge(
+    charge_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    c = db.get(CardCharge, charge_id)
+    if c is None or c.user_id != user.id:
+        raise HTTPException(404, "charge not found")
+    db.delete(c)
+    db.commit()
+
+
+@router.get("/funding")
+def funding(
+    currency: str = Query("USD", description="Reporting currency (ISO 4217)"),
+    days: int = Query(30, ge=1, le=366),
+    user: User = Depends(get_read_principal),
+    db: Session = Depends(get_db),
+):
+    """Prepaid-card view: total topped up vs total ad spend (blended into
+    `currency`), the remaining balance, and a per-day spend/charge breakdown for
+    the last `days`."""
+    rep = currency.upper()
+    rates = {r.currency: float(r.rate_to_usd) for r in db.scalars(select(FxRate))}
+    rates.setdefault("USD", 1.0)
+    r_rep = rates.get(rep, 1.0)
+
+    def to_rep(amount: float, ccy: str | None) -> float:
+        r_from = rates.get((ccy or "USD").upper())
+        return amount * (r_from / r_rep) if r_from and r_rep else amount
+
+    charges = list(db.scalars(
+        select(CardCharge).where(CardCharge.user_id == user.id)))
+    total_charged = sum(to_rep(float(c.amount), c.currency) for c in charges)
+
+    today = date.today()
+    spent_all = query_metrics(
+        db, date_from=date(2000, 1, 1), date_to=today,
+        reporting_currency=rep, user_id=user.id)
+    total_spent = float(spent_all["data"][0]["spend"]) if spent_all["data"] else 0.0
+
+    start = today - timedelta(days=days - 1)
+    daily_spend = query_metrics(
+        db, date_from=start, date_to=today, group_by=["date"],
+        reporting_currency=rep, user_id=user.id, page_size=1000)["data"]
+    spend_by_day = {r["date"]: float(r["spend"]) for r in daily_spend}
+    charge_by_day: dict[str, float] = {}
+    for c in charges:
+        if start <= c.date <= today:
+            k = c.date.isoformat()
+            charge_by_day[k] = charge_by_day.get(k, 0.0) + to_rep(float(c.amount), c.currency)
+
+    all_days = sorted(set(spend_by_day) | set(charge_by_day))
+    daily = [
+        {"date": d, "spend": round(spend_by_day.get(d, 0.0), 2),
+         "charged": round(charge_by_day.get(d, 0.0), 2)}
+        for d in all_days
+    ]
+    return {
+        "currency": rep,
+        "total_charged": round(total_charged, 2),
+        "total_spent": round(total_spent, 2),
+        "balance": round(total_charged - total_spent, 2),
+        "daily": daily,
+    }
 
 
 # -------------------------------------------------------------- saved views

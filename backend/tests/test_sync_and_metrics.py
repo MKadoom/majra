@@ -527,3 +527,20 @@ def test_metrics_scoped_per_user(db):
     assert query_metrics(db, **p, user_id=ua.id)["data"][0]["spend"] == 100.0
     assert query_metrics(db, **p, user_id=ub.id)["data"][0]["spend"] == 999.0
     assert query_metrics(db, **p)["data"][0]["spend"] == 1099.0  # unscoped = all
+
+
+def test_card_charges_and_funding(auth_client):
+    """Log a card top-up; funding shows it as balance against (zero) spend."""
+    r = auth_client.post("/card-charges", json={
+        "date": "2026-06-01", "amount": 500.0, "currency": "USD", "note": "topup"})
+    assert r.status_code == 201, r.text
+    cid = r.json()["id"]
+    assert any(c["id"] == cid and c["amount"] == 500.0
+               for c in auth_client.get("/card-charges").json())
+
+    f = auth_client.get("/funding", params={"currency": "USD", "days": 30}).json()
+    assert f["total_charged"] == 500.0 and f["total_spent"] == 0.0
+    assert f["balance"] == 500.0
+
+    assert auth_client.delete(f"/card-charges/{cid}").status_code == 204
+    assert auth_client.get("/card-charges").json() == []
