@@ -8,6 +8,11 @@
   }
   body {
     @apply bg-ground text-ink antialiased;
+    /* A subtle cool radial wash so the deep ground reads as depth, not flat black. */
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, rgba(34, 211, 238, 0.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, rgba(79, 134, 247, 0.05), transparent 55%);
+    background-attachment: fixed;
   }
   /* Every number in the app is tabular: columns line up, digits don't jitter. */
   .num {
@@ -15,33 +20,65 @@
   }
   /* Section labels read as instrument markings, not headings. */
   .eyebrow {
-    @apply text-eyebrow uppercase text-muted;
+    @apply text-eyebrow font-medium uppercase text-muted;
   }
   :focus-visible {
-    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-ground;
+    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-ground;
   }
   ::selection {
     @apply bg-accent/30;
   }
+  /* Quiet, modern scrollbars that fit the dark chrome. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2b3542 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2b3542;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3a4653;
+    background-clip: padding-box;
+  }
 }
 
 @layer components {
+  /* Elevated card: hairline border, soft shadow, and a faint top highlight so it
+     lifts off the ground. */
   .panel {
-    @apply rounded-panel border border-line bg-surface;
+    @apply relative rounded-panel border border-line bg-surface shadow-card;
+  }
+  .panel::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-panel;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
   }
   .field {
-    @apply w-full rounded-md border border-line bg-ground px-3 py-2 text-sm
-           text-ink placeholder:text-muted/60 focus:border-accent;
+    @apply w-full rounded-md border border-line bg-ground/60 px-3 py-2 text-sm
+           text-ink shadow-sm transition-colors placeholder:text-muted/60
+           hover:border-line focus:border-accent focus:bg-ground;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2
-           text-sm font-medium transition-colors disabled:opacity-50;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-md px-3.5 py-2
+           text-sm font-medium transition-all duration-150 disabled:pointer-events-none
+           disabled:opacity-50;
   }
+  /* Primary: solid cyan with a subtle gradient and glow — the bold accent. */
   .btn-primary {
-    @apply btn bg-accent text-ground hover:bg-accent/90;
+    @apply btn bg-gradient-to-b from-accent to-accent-strong text-ground
+           shadow-[0_1px_0_rgba(255,255,255,0.15)_inset,0_6px_18px_-8px_rgba(34,211,238,0.6)]
+           hover:brightness-110 active:brightness-95;
   }
   .btn-quiet {
-    @apply btn border border-line bg-surface text-ink hover:bg-raised;
+    @apply btn border border-line bg-surface text-ink hover:border-line/0
+           hover:bg-raised;
   }
 }
 

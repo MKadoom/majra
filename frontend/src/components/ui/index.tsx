@@ -1,10 +1,29 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { ReactNode } from "react";
 
 import { platformColor } from "@/lib/api";
 import { dateRange } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
+
+import { Alert } from "./alert";
+import { Badge, type BadgeProps } from "./badge";
+
+// Re-export the shadcn primitives so pages can `import { Button, Card } from
+// "@/components/ui"` or reach for the individual files directly.
+export * from "./button";
+export * from "./card";
+export * from "./input";
+export * from "./textarea";
+export * from "./label";
+export * from "./badge";
+export * from "./table";
+export * from "./separator";
+export * from "./skeleton";
+export * from "./alert";
+export * from "./select";
+export * from "./dialog";
 
 export function Panel({
   title,
@@ -18,9 +37,9 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`panel ${className}`}>
+    <section className={`panel animate-fade-in ${className}`}>
       {(title || action) && (
-        <header className="flex items-center justify-between border-b border-line px-4 py-3">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
           {title && <h2 className="eyebrow">{title}</h2>}
           {action}
         </header>
@@ -30,28 +49,26 @@ export function Panel({
   );
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  success: "text-good border-good/40 bg-good/10",
-  active: "text-good border-good/40 bg-good/10",
-  running: "text-accent border-accent/40 bg-accent/10",
-  pending: "text-muted border-line bg-raised",
-  failed: "text-bad border-bad/40 bg-bad/10",
-  needs_reauth: "text-warn border-warn/40 bg-warn/10",
+// status value → Badge variant
+const STATUS_VARIANT: Record<string, BadgeProps["variant"]> = {
+  success: "good",
+  active: "good",
+  running: "accent",
+  pending: "default",
+  failed: "bad",
+  needs_reauth: "warn",
 };
 
 export function Status({ value }: { value: string }) {
   const { s, locale } = useLocale();
   const label = s(value);
   return (
-    <span
-      className={`rounded border px-1.5 py-0.5 text-eyebrow ${
-        // Uppercasing is a Latin typographic device; Arabic has no case, and
-        // forcing it just adds noise.
-        locale === "en" ? "uppercase" : ""
-      } ${STATUS_STYLE[value] ?? "border-line bg-raised text-muted"}`}
+    <Badge
+      variant={STATUS_VARIANT[value] ?? "default"}
+      className={locale === "en" ? "uppercase" : ""}
     >
       {label.startsWith("status.") ? value.replace(/_/g, " ") : label}
-    </span>
+    </Badge>
   );
 }
 
@@ -59,18 +76,16 @@ export function PlatformDot({ platform }: { platform: string }) {
   return (
     <span
       aria-hidden
-      className="inline-block h-2 w-2 shrink-0 rounded-full"
+      className="inline-block h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-white/10"
       style={{ background: platformColor(platform) }}
     />
   );
 }
 
 /**
- * The channel strip — majra's signature.
- *
- * One tick per day for the window. A tick is lit where data landed and dark
- * where it didn't, so a gap in a tributary is visible at a glance: a broken
- * connector reads as a hole in the channel, without anyone opening a log.
+ * The channel strip — majra's signature. One tick per day for the window, lit
+ * where data landed and dark where it didn't, so a gap in a tributary is visible
+ * at a glance.
  */
 export function ChannelStrip({
   platform,
@@ -89,20 +104,21 @@ export function ChannelStrip({
   const gaps = all.filter((d) => !days.has(d)).length;
   return (
     <div>
-      {/* The strip reads left-to-right in English and right-to-left in Arabic:
-          flex direction follows `dir`, so the oldest day is always at the start. */}
-      <div className="flex items-end gap-[3px]" role="img"
-           aria-label={`${all.length - gaps} / ${all.length}`}>
+      <div
+        className="flex items-end gap-[3px]"
+        role="img"
+        aria-label={`${all.length - gaps} / ${all.length}`}
+      >
         {all.map((d) => {
           const on = days.has(d);
           return (
             <span
               key={d}
               title={`${d} — ${on ? "data" : "no data"}`}
-              className="h-5 w-[6px] rounded-[2px]"
+              className="h-5 w-[6px] rounded-[2px] transition-shadow"
               style={{
-                background: on ? hue : "#232C36",
-                opacity: on ? 1 : 1,
+                background: on ? hue : "#1E2732",
+                boxShadow: on ? `0 0 8px -2px ${hue}` : "none",
               }}
             />
           );
@@ -121,7 +137,7 @@ export function ChannelStrip({
 
 export function Empty({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="py-10 text-center">
+    <div className="py-12 text-center">
       <p className="text-sm text-ink">{title}</p>
       {hint && <p className="mt-1 text-sm text-muted">{hint}</p>}
     </div>
@@ -130,16 +146,16 @@ export function Empty({ title, hint }: { title: string; hint?: string }) {
 
 export function Spinner({ label = "Loading" }: { label?: string }) {
   return (
-    <p className="py-8 text-center text-sm text-muted" role="status">
+    <div
+      className="flex items-center justify-center gap-2 py-10 text-sm text-muted"
+      role="status"
+    >
+      <Loader2 className="size-4 animate-spin text-accent" />
       {label}…
-    </p>
+    </div>
   );
 }
 
 export function ErrorNote({ message }: { message: string }) {
-  return (
-    <p className="rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
-      {message}
-    </p>
-  );
+  return <Alert variant="bad">{message}</Alert>;
 }

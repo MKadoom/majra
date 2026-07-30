@@ -1,5 +1,6 @@
 "use client";
 
+import { Waves } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -38,6 +39,9 @@ export default function LoginPage() {
     <main className="grid min-h-screen place-items-center p-6">
       <div className="w-full max-w-sm">
         <header className="mb-8">
+          <div className="mb-4 inline-flex size-11 items-center justify-center rounded-lg bg-gradient-to-b from-accent to-accent-strong text-ground shadow-glow">
+            <Waves className="size-6" />
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight">
             majra{" "}
             <span className="text-muted" lang="ar" dir="rtl">
