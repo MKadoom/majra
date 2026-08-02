@@ -80,31 +80,65 @@ class TikTokConnector(BaseConnector):
     # -------------------------------------------------------- discovery
     def fetch_accounts(self, tokens: TokenSet) -> list[AccountInfo]:
         self._require_config()
+        # 1) advertisers authorized directly to this token.
+        ids = self._direct_advertiser_ids(tokens)
+        # 2) fall back to advertisers reachable through a Business Center —
+        #    /oauth2/advertiser/get/ only returns *directly* authorized accounts,
+        #    so a BC-managed account (very common) shows up as an empty list.
+        if not ids:
+            ids = self._bc_advertiser_ids(tokens)
+        ids = sorted(set(str(i) for i in ids))
+        if not ids:
+            return []
+        out: list[AccountInfo] = []
+        # advertiser/info caps the batch size, so chunk defensively.
+        for chunk in (ids[i : i + 100] for i in range(0, len(ids), 100)):
+            info = self._get(
+                f"{BASE}/advertiser/info/",
+                {"advertiser_ids": json.dumps(chunk),
+                 "fields": json.dumps(["advertiser_id", "name", "currency", "timezone"])},
+                tokens,
+            )
+            for a in info.get("list", []):
+                out.append(
+                    AccountInfo(
+                        external_id=str(a["advertiser_id"]),
+                        name=a.get("name") or str(a["advertiser_id"]),
+                        currency=a.get("currency"),
+                        timezone=a.get("timezone"),
+                    )
+                )
+        return out
+
+    def _direct_advertiser_ids(self, tokens: TokenSet) -> list[str]:
         listing = self._get(
             f"{BASE}/oauth2/advertiser/get/",
             {"app_id": self._cfg.tiktok_app_id, "secret": self._cfg.tiktok_app_secret},
             tokens,
         )
-        ids = [a["advertiser_id"] for a in listing.get("list", [])]
-        if not ids:
-            return []
-        info = self._get(
-            f"{BASE}/advertiser/info/",
-            {"advertiser_ids": json.dumps(ids),
-             "fields": json.dumps(["advertiser_id", "name", "currency", "timezone"])},
-            tokens,
-        )
-        out = []
-        for a in info.get("list", []):
-            out.append(
-                AccountInfo(
-                    external_id=str(a["advertiser_id"]),
-                    name=a.get("name") or str(a["advertiser_id"]),
-                    currency=a.get("currency"),
-                    timezone=a.get("timezone"),
+        return [str(a["advertiser_id"]) for a in listing.get("list", []) if a.get("advertiser_id")]
+
+    def _bc_advertiser_ids(self, tokens: TokenSet) -> list[str]:
+        """Every ADVERTISER asset under every Business Center the token can see."""
+        ids: list[str] = []
+        for bc in self._paginate(f"{BASE}/bc/get/", {}, tokens):
+            # /bc/get/ items may be flat ({bc_id}) or nested ({bc_info:{bc_id}}).
+            bc_id = bc.get("bc_id") or (bc.get("bc_info") or {}).get("bc_id")
+            if not bc_id:
+                continue
+            for asset in self._paginate(
+                f"{BASE}/bc/asset/get/",
+                {"bc_id": bc_id, "asset_type": "ADVERTISER"},
+                tokens,
+            ):
+                aid = (
+                    asset.get("advertiser_id")
+                    or asset.get("asset_id")
+                    or (asset.get("advertiser_info") or {}).get("advertiser_id")
                 )
-            )
-        return out
+                if aid:
+                    ids.append(str(aid))
+        return ids
 
     # ------------------------------------------------------------- data
     def fetch_entities(

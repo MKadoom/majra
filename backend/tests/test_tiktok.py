@@ -64,6 +64,32 @@ def _ok(data):
     return httpx.Response(200, json={"code": 0, "message": "OK", "data": data})
 
 
+@respx.mock
+def test_tiktok_fetch_accounts_via_business_center():
+    """When /oauth2/advertiser/get/ returns no directly-authorized advertisers
+    (the common Business-Center-managed case), discovery falls back to
+    /bc/get/ + /bc/asset/get/ so the BC's ad accounts are still found."""
+    from app.connectors.tiktok.connector import TokenSet
+
+    respx.get(f"{BASE}/oauth2/advertiser/get/").mock(return_value=_ok({"list": []}))
+    respx.get(f"{BASE}/bc/get/").mock(
+        return_value=_ok({"list": [{"bc_id": "BC1"}], "page_info": {"page": 1, "total_page": 1}}))
+    respx.get(f"{BASE}/bc/asset/get/").mock(
+        return_value=_ok({"list": [{"advertiser_id": "7479812335633498113"}],
+                          "page_info": {"page": 1, "total_page": 1}}))
+    respx.get(f"{BASE}/advertiser/info/").mock(
+        return_value=_ok({"list": [{"advertiser_id": "7479812335633498113",
+                                    "name": "جمعية الثريا", "currency": "SAR",
+                                    "timezone": "Asia/Riyadh"}]}))
+    c = TikTokConnector()
+    c._cfg.tiktok_app_id = "app"
+    c._cfg.tiktok_app_secret = "shh"
+    accts = c.fetch_accounts(TokenSet(access_token="tok"))
+    assert len(accts) == 1
+    assert accts[0].external_id == "7479812335633498113"
+    assert accts[0].currency == "SAR"
+
+
 def _pi(data_list):
     return {"list": data_list, "page_info": {"page": 1, "total_page": 1}}
 
