@@ -111,9 +111,16 @@ class TikTokConnector(BaseConnector):
         return out
 
     def _direct_advertiser_ids(self, tokens: TokenSet) -> list[str]:
+        # /oauth2/advertiser/get/ is an OAuth endpoint: it authenticates via the
+        # access_token QUERY param (not the Access-Token header the other calls
+        # use). Without it TikTok returns 200 + an empty list.
         listing = self._get(
             f"{BASE}/oauth2/advertiser/get/",
-            {"app_id": self._cfg.tiktok_app_id, "secret": self._cfg.tiktok_app_secret},
+            {
+                "app_id": self._cfg.tiktok_app_id,
+                "secret": self._cfg.tiktok_app_secret,
+                "access_token": tokens.access_token,
+            },
             tokens,
         )
         return [str(a["advertiser_id"]) for a in listing.get("list", []) if a.get("advertiser_id")]
