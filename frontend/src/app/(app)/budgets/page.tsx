@@ -98,10 +98,31 @@ export default function BudgetsPage() {
 
                 {p && (
                   <>
-                    <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-raised">
+                    <div className="mt-3 flex items-baseline justify-between">
+                      <span className="text-eyebrow text-muted">{t("budget.used")}</span>
+                      <span
+                        className={`num text-sm font-medium ${
+                          p.status === "over" ? "text-bad" : "text-ink"
+                        }`}
+                      >
+                        {p.pct_used != null ? `${Math.round(p.pct_used * 100)}%` : "—"}
+                      </span>
+                    </div>
+                    {/* Bar scaled to 150%; a marker at the 100% target so an
+                        over-budget fill visibly overshoots it. */}
+                    <div className="relative mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-raised">
                       <div
-                        className={`h-full ${p.status === "over" ? "bg-bad" : "bg-accent"}`}
-                        style={{ inlineSize: `${Math.round(pct * 100)}%` }}
+                        className={`h-full rounded-full transition-[inline-size] duration-500 ${
+                          p.status === "over"
+                            ? "bg-gradient-to-r from-bad/80 to-bad"
+                            : "bg-gradient-to-r from-accent to-accent-strong"
+                        }`}
+                        style={{ inlineSize: `${Math.round((pct / 1.5) * 100)}%` }}
+                      />
+                      <span
+                        aria-hidden
+                        className="absolute inset-y-0 w-px bg-ink/40"
+                        style={{ insetInlineStart: `${Math.round((1 / 1.5) * 100)}%` }}
                       />
                     </div>
                     <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
@@ -123,7 +144,7 @@ export default function BudgetsPage() {
 
                 <div className="mt-3 border-t border-line pt-2">
                   <button
-                    className="text-sm text-muted hover:text-danger"
+                    className="text-sm text-muted transition-colors hover:text-bad"
                     onClick={async () => {
                       await api.del(`/budgets/${b.id}`);
                       void load();
