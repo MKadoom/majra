@@ -121,7 +121,8 @@ class TikTokConnector(BaseConnector):
     def _bc_advertiser_ids(self, tokens: TokenSet) -> list[str]:
         """Every ADVERTISER asset under every Business Center the token can see."""
         ids: list[str] = []
-        for bc in self._paginate(f"{BASE}/bc/get/", {}, tokens):
+        # BC endpoints cap page_size at 50 (unlike the 1000 the ads endpoints allow).
+        for bc in self._paginate(f"{BASE}/bc/get/", {}, tokens, page_size=50):
             # /bc/get/ items may be flat ({bc_id}) or nested ({bc_info:{bc_id}}).
             bc_id = bc.get("bc_id") or (bc.get("bc_info") or {}).get("bc_id")
             if not bc_id:
@@ -130,6 +131,7 @@ class TikTokConnector(BaseConnector):
                 f"{BASE}/bc/asset/get/",
                 {"bc_id": bc_id, "asset_type": "ADVERTISER"},
                 tokens,
+                page_size=50,
             ):
                 aid = (
                     asset.get("advertiser_id")
@@ -275,11 +277,13 @@ class TikTokConnector(BaseConnector):
                 continue
         raise TransientError(last)
 
-    def _paginate(self, url: str, params: dict, tokens: TokenSet) -> Iterator[dict]:
+    def _paginate(
+        self, url: str, params: dict, tokens: TokenSet, page_size: int = 1000
+    ) -> Iterator[dict]:
         page = 1
         while True:
             data = self._request(
-                "GET", url, tokens, params={**params, "page": page, "page_size": 1000}
+                "GET", url, tokens, params={**params, "page": page, "page_size": page_size}
             )
             yield from data.get("list", [])
             info = data.get("page_info", {})
