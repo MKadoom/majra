@@ -7,3 +7,4 @@ from app.connectors.meta.connector import MetaConnector  # noqa: F401
 from app.connectors.meta_social.connector import MetaSocialConnector  # noqa: F401
 from app.connectors.snapchat.connector import SnapchatConnector  # noqa: F401
 from app.connectors.tiktok.connector import TikTokConnector  # noqa: F401
+from app.connectors.whatsapp.connector import WhatsAppConnector  # noqa: F401
