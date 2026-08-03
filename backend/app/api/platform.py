@@ -193,8 +193,9 @@ def set_synced_accounts(
 
 class ServiceAccountConnection(BaseModel):
     platform: str
-    service_account: dict          # the full service-account JSON key
+    service_account: dict = Field(default_factory=dict)  # SA JSON key (GA4/GTM)
     property_id: str | None = None  # GA4 property id; optional (GTM: account filter)
+    waba_ids: list[str] | None = None  # WhatsApp Business Account IDs (whatsapp)
     name: str | None = None
 
 
@@ -216,7 +217,11 @@ def create_service_account_connection(
         )
     try:
         tokens = connector.credentials_from_input(
-            {"service_account": body.service_account, "property_id": body.property_id}
+            {
+                "service_account": body.service_account,
+                "property_id": body.property_id,
+                "waba_ids": body.waba_ids,
+            }
         )
     except PermanentError as exc:
         raise HTTPException(422, str(exc)) from exc
