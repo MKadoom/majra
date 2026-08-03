@@ -22,6 +22,7 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime
 
 import httpx
+import structlog
 
 from app.connectors.base import (
     AccountInfo,
@@ -32,6 +33,8 @@ from app.connectors.base import (
     TransientError,
 )
 from app.connectors.whatsapp.config import WhatsAppSettings
+
+log = structlog.get_logger()
 
 METRIC_TYPES = ["SENT", "DELIVERED", "READ", "CLICKED"]
 TEMPLATES_PER_CALL = 10  # template_analytics caps template_ids at 10 per request
@@ -142,6 +145,8 @@ class WhatsAppConnector(BaseConnector):
                     "template_ids": json.dumps(chunk),
                 },
             )
+            if i == 0:  # TEMP debug: log the real response shape once per WABA
+                log.info("wa.template_analytics.sample", body=str(data)[:1200])
             for series in data.get("data", []):
                 for dp in series.get("data_points", []):
                     tid = str(dp.get("template_id") or series.get("template_id") or "")
