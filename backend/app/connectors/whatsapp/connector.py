@@ -16,6 +16,7 @@ Auth is a single System User token (whatsapp_business_management) read from env
 `insights_carry_hierarchy` is True — each row carries its template as the
 campaign, so the engine skips the entity walk (there are no ad-sets/ads here).
 """
+import json
 import time
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
@@ -135,8 +136,10 @@ class WhatsAppConnector(BaseConnector):
                     "start": start,
                     "end": end,
                     "granularity": "DAILY",
-                    "metric_types": ",".join(METRIC_TYPES),
-                    "template_ids": ",".join(chunk),
+                    # Meta expects JSON-array params here; a comma string is
+                    # silently ignored and returns data points with no metrics.
+                    "metric_types": json.dumps(METRIC_TYPES),
+                    "template_ids": json.dumps(chunk),
                 },
             )
             for series in data.get("data", []):
