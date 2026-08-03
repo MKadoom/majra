@@ -250,10 +250,22 @@ httpOnly cookies and refreshes them transparently — so no token is ever expose
 to client-side JavaScript and the backend requires no CORS. `GET /accounts` was
 added to the API for the dashboard's filters and account display.
 
+## §7c WhatsApp marketing messages
+`whatsapp` connector (service-account auth, `dataset=ad_performance`,
+`raw_model=None` so no migration). Reads the **WhatsApp Business Management API**:
+`message_templates` (each template ≈ a marketing "campaign") + `template_analytics`
+(DAILY, `template_ids` chunked by 10). Metrics are mapped onto the ad shape —
+`delivered→impressions`, `clicked→clicks`, `read→conversions`, `sent→purchases`,
+`spend=0`. Auth is a single System User token (`whatsapp_business_management`) in
+`MAJRA_WHATSAPP_TOKEN`; a connection pins which WABAs to pull (`waba_ids` in
+`tokens.extra`). `insights_carry_hierarchy=True` (template==campaign, no entity
+walk). Distinct from WhatsApp-objective *ads* (which live in the Meta ad account
+and can be tagged via `platform_override`).
+
 ## §8 Status
 Built and tested (52 backend tests passing; the dashboard builds clean): auth, token encryption, the connector SDK,
-and all seven connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads,
-Facebook Pages + Instagram, GTM** — the idempotent sync engine (four dataset
+and eight connectors — **Meta Ads, Google Ads, GA4, TikTok Ads, Snapchat Ads,
+Facebook Pages + Instagram, GTM, WhatsApp marketing messages** — the idempotent sync engine (four dataset
 shapes: ad, web, social, config, with ad-level parent derivation), dataset-aware
 watermark/backfill, schedule ticking, the metrics / web-metrics / social-metrics
 APIs plus `/gtm-resources`, and a blended cross-platform `/metrics` query. The
