@@ -309,14 +309,17 @@ def _month_start(d: date, months_back: int) -> date:
 def funding(
     currency: str = Query("USD", description="Reporting currency (ISO 4217)"),
     days: int = Query(30, ge=1, le=366),
+    date_from: date | None = Query(None, description="Daily window start (overrides days)"),
+    date_to: date | None = Query(None, description="Daily window end (overrides days)"),
     months: int = Query(12, ge=1, le=60, description="Calendar months in the monthly rollup"),
     user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     """Prepaid-card view: total topped up vs total ad spend (blended into
-    `currency`), the remaining balance, a per-day spend/charge breakdown for the
-    last `days`, and a per-calendar-month rollup for the last `months` (each with
-    a per-platform split and net = topped up − spent)."""
+    `currency`), the remaining balance, a per-day spend/charge breakdown, and a
+    per-calendar-month rollup for the last `months` (each with a per-platform
+    split and net = topped up − spent). The daily window is an explicit
+    `date_from`/`date_to` range when given, otherwise the last `days`."""
     rep = currency.upper()
     rates = {r.currency: float(r.rate_to_usd) for r in db.scalars(select(FxRate))}
     rates.setdefault("USD", 1.0)
@@ -336,14 +339,18 @@ def funding(
         reporting_currency=rep, user_id=user.id)
     total_spent = float(spent_all["data"][0]["spend"]) if spent_all["data"] else 0.0
 
-    start = today - timedelta(days=days - 1)
+    # Daily window: an explicit range wins; otherwise the trailing `days`.
+    win_to = date_to or today
+    win_from = date_from or (win_to - timedelta(days=days - 1))
+    if win_from > win_to:
+        win_from, win_to = win_to, win_from
     daily_spend = query_metrics(
-        db, date_from=start, date_to=today, group_by=["date"],
+        db, date_from=win_from, date_to=win_to, group_by=["date"],
         reporting_currency=rep, user_id=user.id, page_size=1000)["data"]
     spend_by_day = {r["date"]: float(r["spend"]) for r in daily_spend}
     charge_by_day: dict[str, float] = {}
     for c in charges:
-        if start <= c.date <= today:
+        if win_from <= c.date <= win_to:
             k = c.date.isoformat()
             charge_by_day[k] = charge_by_day.get(k, 0.0) + to_rep(float(c.amount), c.currency)
 

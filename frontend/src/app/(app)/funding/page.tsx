@@ -23,12 +23,38 @@ import type { CardCharge, Funding, MetricPage } from "@/lib/types";
 const money = (n: number, ccy: string) =>
   `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${ccy}`;
 
+const isoLocal = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+
+type Preset = "last7" | "last30" | "last60" | "last90" | "mtd" | "lastmonth" | "custom";
+
+// Resolve a preset (or the custom inputs) into an inclusive from/to window.
+function rangeFor(preset: Preset, from: string, to: string): { from: string; to: string } {
+  const now = new Date();
+  if (preset === "custom") return { from, to };
+  if (preset === "mtd") {
+    return { from: isoLocal(new Date(now.getFullYear(), now.getMonth(), 1)), to: isoLocal(now) };
+  }
+  if (preset === "lastmonth") {
+    return {
+      from: isoLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+      to: isoLocal(new Date(now.getFullYear(), now.getMonth(), 0)),
+    };
+  }
+  const n = { last7: 7, last30: 30, last60: 60, last90: 90 }[preset];
+  return { from: daysAgo(n - 1), to: daysAgo(0) };
+}
+
 export default function FundingPage() {
   const { t, p: pName, dir } = useLocale();
   const [currency, setCurrency] = useState("USD");
   const [fxCurrencies, setFxCurrencies] = useState<string[]>(["USD"]);
   const [granularity, setGranularity] = useState<"day" | "month">("day");
-  const [days, setDays] = useState(30);
+  const [preset, setPreset] = useState<Preset>("last30");
+  const [customFrom, setCustomFrom] = useState(daysAgo(29));
+  const [customTo, setCustomTo] = useState(daysAgo(0));
   const [months, setMonths] = useState(12);
   const [funding, setFunding] = useState<Funding | null>(null);
   const [charges, setCharges] = useState<CardCharge[]>([]);
@@ -52,13 +78,16 @@ export default function FundingPage() {
     setLoading(true);
     setError(null);
     try {
+      const r = rangeFor(preset, customFrom, customTo);
       const [f, c, m] = await Promise.all([
-        api.get<Funding>(`/funding${qs({ currency, days, months })}`),
+        api.get<Funding>(
+          `/funding${qs({ currency, date_from: r.from, date_to: r.to, months })}`,
+        ),
         api.get<CardCharge[]>("/card-charges"),
         api.get<MetricPage>(
           `/metrics${qs({
-            date_from: daysAgo(days - 1),
-            date_to: daysAgo(0),
+            date_from: r.from,
+            date_to: r.to,
             group_by: ["date", "platform"],
             currency,
             page_size: 1000,
@@ -73,7 +102,7 @@ export default function FundingPage() {
     } finally {
       setLoading(false);
     }
-  }, [currency, days, months, t]);
+  }, [currency, preset, customFrom, customTo, months, t]);
 
   useEffect(() => {
     void load();
@@ -175,18 +204,42 @@ export default function FundingPage() {
             ))}
           </select>
           {granularity === "day" ? (
-            <select
-              className="field"
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
-              aria-label={t("fund.range")}
-            >
-              {[30, 60, 90].map((d) => (
-                <option key={d} value={d}>
-                  {t("fund.lastDays", { n: d })}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                className="field"
+                value={preset}
+                onChange={(e) => setPreset(e.target.value as Preset)}
+                aria-label={t("fund.range")}
+              >
+                <option value="last7">{t("fund.lastDays", { n: 7 })}</option>
+                <option value="last30">{t("fund.lastDays", { n: 30 })}</option>
+                <option value="last60">{t("fund.lastDays", { n: 60 })}</option>
+                <option value="last90">{t("fund.lastDays", { n: 90 })}</option>
+                <option value="mtd">{t("fund.mtd")}</option>
+                <option value="lastmonth">{t("fund.lastMonth")}</option>
+                <option value="custom">{t("fund.custom")}</option>
+              </select>
+              {preset === "custom" && (
+                <>
+                  <input
+                    className="field"
+                    type="date"
+                    value={customFrom}
+                    max={customTo}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    aria-label={t("fund.from")}
+                  />
+                  <input
+                    className="field"
+                    type="date"
+                    value={customTo}
+                    min={customFrom}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    aria-label={t("fund.to")}
+                  />
+                </>
+              )}
+            </>
           ) : (
             <select
               className="field"
