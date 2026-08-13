@@ -213,13 +213,38 @@ function FxRates({ rates, onChange }: { rates: FxRate[]; onChange: () => void })
     }
   }
 
+  async function pruneUnused() {
+    setBusy(true);
+    try {
+      await api.post("/fx-rates/prune", {});
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(ccy: string) {
+    setBusy(true);
+    try {
+      await api.del(`/fx-rates/${ccy}`);
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Panel title={t("set.fxTitle")}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-sm text-muted">{t("set.fxBlurb")}</p>
-        <button className="btn-quiet shrink-0" onClick={autoFetch} disabled={busy}>
-          {busy ? t("common.working") : t("set.fxFetch")}
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button className="btn-quiet" onClick={pruneUnused} disabled={busy}>
+            {busy ? t("common.working") : t("set.fxPrune")}
+          </button>
+          <button className="btn-quiet" onClick={autoFetch} disabled={busy}>
+            {busy ? t("common.working") : t("set.fxFetch")}
+          </button>
+        </div>
       </div>
       {rates.length > 0 && (
         <ul className="mb-3 flex flex-col gap-1.5 text-sm">
@@ -229,6 +254,14 @@ function FxRates({ rates, onChange }: { rates: FxRate[]; onChange: () => void })
               <span className="num text-muted">
                 1 {r.currency} = {r.rate_to_usd} USD
               </span>
+              <button
+                className="ms-auto text-muted hover:text-bad"
+                onClick={() => remove(r.currency)}
+                disabled={busy}
+                aria-label={`${t("common.delete")} ${r.currency}`}
+              >
+                {t("common.delete")}
+              </button>
             </li>
           ))}
         </ul>

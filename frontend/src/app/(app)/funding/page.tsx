@@ -3,9 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Wallet } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { Empty, ErrorNote, PageHeader, Panel, PlatformDot, Spinner } from "@/components/ui";
-import { api, currencyOptions, qs } from "@/lib/api";
+import { api, currencyOptions, platformColor, qs } from "@/lib/api";
 import { daysAgo } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
 import type { CardCharge, Funding, MetricPage } from "@/lib/types";
@@ -14,10 +24,12 @@ const money = (n: number, ccy: string) =>
   `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${ccy}`;
 
 export default function FundingPage() {
-  const { t, p: pName } = useLocale();
+  const { t, p: pName, dir } = useLocale();
   const [currency, setCurrency] = useState("USD");
   const [fxCurrencies, setFxCurrencies] = useState<string[]>(["USD"]);
+  const [granularity, setGranularity] = useState<"day" | "month">("day");
   const [days, setDays] = useState(30);
+  const [months, setMonths] = useState(12);
   const [funding, setFunding] = useState<Funding | null>(null);
   const [charges, setCharges] = useState<CardCharge[]>([]);
   const [perPlatform, setPerPlatform] = useState<MetricPage["data"]>([]);
@@ -41,7 +53,7 @@ export default function FundingPage() {
     setError(null);
     try {
       const [f, c, m] = await Promise.all([
-        api.get<Funding>(`/funding${qs({ currency, days })}`),
+        api.get<Funding>(`/funding${qs({ currency, days, months })}`),
         api.get<CardCharge[]>("/card-charges"),
         api.get<MetricPage>(
           `/metrics${qs({
@@ -61,7 +73,7 @@ export default function FundingPage() {
     } finally {
       setLoading(false);
     }
-  }, [currency, days, t]);
+  }, [currency, days, months, t]);
 
   useEffect(() => {
     void load();
@@ -99,6 +111,32 @@ export default function FundingPage() {
     };
   }, [perPlatform, funding]);
 
+  const monthly = funding?.monthly ?? [];
+  const monthPlatforms = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of monthly) for (const p of Object.keys(m.by_platform)) s.add(p);
+    return [...s].sort();
+  }, [monthly]);
+
+  // Spend-over-time chart (oldest → newest, RTL-aware), stacked by platform —
+  // the shape ad managers use. Reuses the same day/month split as the table.
+  const chart = useMemo(() => {
+    if (granularity === "day") {
+      const points = [...dates].reverse().map((d) => {
+        const row: Record<string, number | string> = { label: d };
+        for (const p of platforms) row[p] = Number(cell(d, p).toFixed(2));
+        return row;
+      });
+      return { points, keys: platforms };
+    }
+    const points = [...monthly].reverse().map((m) => {
+      const row: Record<string, number | string> = { label: m.month };
+      for (const p of monthPlatforms) row[p] = m.by_platform[p] ?? 0;
+      return row;
+    });
+    return { points, keys: monthPlatforms };
+  }, [granularity, dates, platforms, cell, monthly, monthPlatforms]);
+
   if (loading && !funding) return <Spinner label={t("common.loading")} />;
   const ccy = funding?.currency ?? currency;
   const low = (funding?.balance ?? 0) <= 0;
@@ -107,6 +145,23 @@ export default function FundingPage() {
     <div className="flex flex-col gap-5">
       <PageHeader icon={Wallet} title={t("fund.title")} subtitle={t("fund.subtitle")}>
         <div className="flex flex-wrap items-end gap-2">
+          <div className="inline-flex overflow-hidden rounded-md border border-line">
+            {(["day", "month"] as const).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGranularity(g)}
+                aria-pressed={granularity === g}
+                className={`px-3 py-1.5 text-sm transition-colors ${
+                  granularity === g
+                    ? "bg-accent/10 text-ink"
+                    : "text-muted hover:bg-raised hover:text-ink"
+                }`}
+              >
+                {g === "day" ? t("fund.viewDaily") : t("fund.viewMonthly")}
+              </button>
+            ))}
+          </div>
           <select
             className="field"
             value={currency}
@@ -119,18 +174,33 @@ export default function FundingPage() {
               </option>
             ))}
           </select>
-          <select
-            className="field"
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-            aria-label={t("fund.range")}
-          >
-            {[30, 60, 90].map((d) => (
-              <option key={d} value={d}>
-                {t("fund.lastDays", { n: d })}
-              </option>
-            ))}
-          </select>
+          {granularity === "day" ? (
+            <select
+              className="field"
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value))}
+              aria-label={t("fund.range")}
+            >
+              {[30, 60, 90].map((d) => (
+                <option key={d} value={d}>
+                  {t("fund.lastDays", { n: d })}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              className="field"
+              value={months}
+              onChange={(e) => setMonths(Number(e.target.value))}
+              aria-label={t("fund.range")}
+            >
+              {[6, 12, 24].map((m) => (
+                <option key={m} value={m}>
+                  {t("fund.lastMonths", { n: m })}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </PageHeader>
 
@@ -155,50 +225,153 @@ export default function FundingPage() {
         </div>
       )}
 
-      <Panel title={t("fund.daily")}>
-        {dates.length === 0 ? (
-          <Empty title={t("fund.noDaily")} />
+      <Panel title={granularity === "day" ? t("fund.daily") : t("fund.monthly")}>
+        {chart.points.length === 0 ? (
+          <Empty title={granularity === "day" ? t("fund.noDaily") : t("fund.noMonthly")} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line">
-                  <th className="px-2 py-2 text-start eyebrow">{t("fund.date")}</th>
-                  {platforms.map((p) => (
-                    <th key={p} className="px-2 py-2 text-end eyebrow">
-                      {pName(p)}
-                    </th>
-                  ))}
-                  <th className="px-2 py-2 text-end eyebrow">{t("explore.total")}</th>
-                  <th className="px-2 py-2 text-end eyebrow">{t("fund.chargedCol")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dates.map((d) => (
-                  <tr key={d} className="border-b border-line/60 hover:bg-raised">
-                    <td className="px-2 py-2">{d}</td>
-                    {platforms.map((p) => (
-                      <td key={p} className="num px-2 py-2 text-end">
-                        {cell(d, p).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      </td>
-                    ))}
-                    <td className="num px-2 py-2 text-end font-medium">
-                      {dayTotal(d).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="num px-2 py-2 text-end text-good">
-                      {dayCharged(d)
-                        ? dayCharged(d).toLocaleString(undefined, {
-                            maximumFractionDigits: 2,
-                          })
-                        : "—"}
-                    </td>
-                  </tr>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chart.points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid stroke="#232C36" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke="#8B98A5"
+                  tick={{ fontSize: 11 }}
+                  tickMargin={8}
+                  reversed={dir === "rtl"}
+                />
+                <YAxis
+                  stroke="#8B98A5"
+                  tick={{ fontSize: 11 }}
+                  width={56}
+                  orientation={dir === "rtl" ? "right" : "left"}
+                />
+                <Tooltip
+                  cursor={{ fill: "#232C3640" }}
+                  contentStyle={{
+                    background: "#161C23",
+                    border: "1px solid #232C36",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  labelStyle={{ color: "#8B98A5" }}
+                />
+                {chart.keys.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
+                {chart.keys.map((k) => (
+                  <Bar
+                    key={k}
+                    dataKey={k}
+                    name={pName(k)}
+                    stackId="spend"
+                    fill={platformColor(k)}
+                    maxBarSize={48}
+                  />
                 ))}
-              </tbody>
-            </table>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
       </Panel>
+
+      {granularity === "day" ? (
+        <Panel title={t("fund.breakdown")}>
+          {dates.length === 0 ? (
+            <Empty title={t("fund.noDaily")} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="px-2 py-2 text-start eyebrow">{t("fund.date")}</th>
+                    {platforms.map((p) => (
+                      <th key={p} className="px-2 py-2 text-end eyebrow">
+                        {pName(p)}
+                      </th>
+                    ))}
+                    <th className="px-2 py-2 text-end eyebrow">{t("explore.total")}</th>
+                    <th className="px-2 py-2 text-end eyebrow">{t("fund.chargedCol")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dates.map((d) => (
+                    <tr key={d} className="border-b border-line/60 hover:bg-raised">
+                      <td className="px-2 py-2">{d}</td>
+                      {platforms.map((p) => (
+                        <td key={p} className="num px-2 py-2 text-end">
+                          {cell(d, p).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </td>
+                      ))}
+                      <td className="num px-2 py-2 text-end font-medium">
+                        {dayTotal(d).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="num px-2 py-2 text-end text-good">
+                        {dayCharged(d)
+                          ? dayCharged(d).toLocaleString(undefined, {
+                              maximumFractionDigits: 2,
+                            })
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      ) : (
+        <Panel title={t("fund.breakdown")}>
+          {monthly.length === 0 ? (
+            <Empty title={t("fund.noMonthly")} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="px-2 py-2 text-start eyebrow">{t("fund.month")}</th>
+                    {monthPlatforms.map((p) => (
+                      <th key={p} className="px-2 py-2 text-end eyebrow">
+                        {pName(p)}
+                      </th>
+                    ))}
+                    <th className="px-2 py-2 text-end eyebrow">{t("explore.total")}</th>
+                    <th className="px-2 py-2 text-end eyebrow">{t("fund.chargedCol")}</th>
+                    <th className="px-2 py-2 text-end eyebrow">{t("fund.net")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthly.map((m) => (
+                    <tr key={m.month} className="border-b border-line/60 hover:bg-raised">
+                      <td className="num px-2 py-2">{m.month}</td>
+                      {monthPlatforms.map((p) => (
+                        <td key={p} className="num px-2 py-2 text-end">
+                          {(m.by_platform[p] ?? 0).toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                      ))}
+                      <td className="num px-2 py-2 text-end font-medium">
+                        {m.spend.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="num px-2 py-2 text-end text-good">
+                        {m.charged
+                          ? m.charged.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                          : "—"}
+                      </td>
+                      <td
+                        className={`num px-2 py-2 text-end font-medium ${
+                          m.net < 0 ? "text-bad" : "text-good"
+                        }`}
+                      >
+                        {m.net.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      )}
 
       <AddCharge defaultCurrency={ccy} onDone={load} />
 

@@ -25,12 +25,21 @@ export type CardCharge = {
   note: string | null;
 };
 
+export type FundingMonth = {
+  month: string; // YYYY-MM
+  spend: number;
+  charged: number;
+  net: number;
+  by_platform: Record<string, number>;
+};
+
 export type Funding = {
   currency: string;
   total_charged: number;
   total_spent: number;
   balance: number;
   daily: { date: string; spend: number; charged: number }[];
+  monthly: FundingMonth[];
 };
 
 export type SavedView = {

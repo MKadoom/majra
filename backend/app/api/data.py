@@ -12,6 +12,7 @@ from app.connectors.base import BREAKDOWN_SETS
 from app.core.config import settings
 from app.core.db import get_db
 from app.models import (
+    Account,
     Budget,
     CardCharge,
     Connection,
@@ -297,16 +298,25 @@ def delete_card_charge(
     db.commit()
 
 
+def _month_start(d: date, months_back: int) -> date:
+    """First day of the calendar month `months_back` months before `d`'s month."""
+    idx = (d.year * 12 + (d.month - 1)) - months_back
+    y, m0 = divmod(idx, 12)
+    return date(y, m0 + 1, 1)
+
+
 @router.get("/funding")
 def funding(
     currency: str = Query("USD", description="Reporting currency (ISO 4217)"),
     days: int = Query(30, ge=1, le=366),
+    months: int = Query(12, ge=1, le=60, description="Calendar months in the monthly rollup"),
     user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     """Prepaid-card view: total topped up vs total ad spend (blended into
-    `currency`), the remaining balance, and a per-day spend/charge breakdown for
-    the last `days`."""
+    `currency`), the remaining balance, a per-day spend/charge breakdown for the
+    last `days`, and a per-calendar-month rollup for the last `months` (each with
+    a per-platform split and net = topped up − spent)."""
     rep = currency.upper()
     rates = {r.currency: float(r.rate_to_usd) for r in db.scalars(select(FxRate))}
     rates.setdefault("USD", 1.0)
@@ -343,12 +353,48 @@ def funding(
          "charged": round(charge_by_day.get(d, 0.0), 2)}
         for d in all_days
     ]
+
+    # Calendar-month rollup: spend split per platform, plus topped-up and net.
+    m_start = _month_start(today, months - 1)
+    month_rows = query_metrics(
+        db, date_from=m_start, date_to=today, group_by=["date", "platform"],
+        reporting_currency=rep, user_id=user.id, page_size=1_000_000)["data"]
+    spend_by_month: dict[str, float] = {}
+    plat_by_month: dict[str, dict[str, float]] = {}
+    for r in month_rows:
+        mk = str(r["date"])[:7]  # YYYY-MM
+        plat = str(r["platform"])
+        sp = float(r["spend"])
+        spend_by_month[mk] = spend_by_month.get(mk, 0.0) + sp
+        bucket = plat_by_month.setdefault(mk, {})
+        bucket[plat] = bucket.get(plat, 0.0) + sp
+    charge_by_month: dict[str, float] = {}
+    for c in charges:
+        if c.date >= m_start:
+            mk = c.date.isoformat()[:7]
+            charge_by_month[mk] = charge_by_month.get(mk, 0.0) + to_rep(
+                float(c.amount), c.currency)
+    all_months = sorted(set(spend_by_month) | set(charge_by_month), reverse=True)
+    monthly = [
+        {
+            "month": mk,
+            "spend": round(spend_by_month.get(mk, 0.0), 2),
+            "charged": round(charge_by_month.get(mk, 0.0), 2),
+            "net": round(charge_by_month.get(mk, 0.0) - spend_by_month.get(mk, 0.0), 2),
+            "by_platform": {
+                p: round(v, 2) for p, v in sorted((plat_by_month.get(mk) or {}).items())
+            },
+        }
+        for mk in all_months
+    ]
+
     return {
         "currency": rep,
         "total_charged": round(total_charged, 2),
         "total_spent": round(total_spent, 2),
         "balance": round(total_charged - total_spent, 2),
         "daily": daily,
+        "monthly": monthly,
     }
 
 
@@ -520,6 +566,52 @@ def refresh_fx(
     except Exception as exc:  # noqa: BLE001 — surface provider errors to the caller
         raise HTTPException(502, f"fx refresh failed: {exc}") from exc
     return {"updated": n}
+
+
+def _fx_keep_set(db: Session) -> set[str]:
+    """Currencies that must never be pruned: USD (implicit base) plus every
+    currency any account actually reports spend in — deleting one of those would
+    make that spend pass through unconverted and corrupt blended totals."""
+    used = db.scalars(
+        select(Account.currency).where(Account.currency.isnot(None)).distinct()
+    )
+    return {"USD", *(c.upper() for c in used if c)}
+
+
+@router.delete("/fx-rates/{currency}", status_code=204)
+def delete_fx_rate(
+    currency: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove one currency's rate (owner-only). USD is the implicit base and a
+    currency an account spends in cannot be removed (it would break conversion)."""
+    ccy = currency.upper()
+    if ccy in _fx_keep_set(db):
+        raise HTTPException(
+            409, f"'{ccy}' is in use (base or an account's currency) and can't be removed"
+        )
+    row = db.scalar(select(FxRate).where(FxRate.currency == ccy))
+    if row is None:
+        raise HTTPException(404, "currency not found")
+    db.delete(row)
+    db.commit()
+
+
+@router.post("/fx-rates/prune")
+def prune_fx_rates(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Delete every rate except USD and the currencies accounts actually use —
+    collapses a bulk auto-fetched list down to what this instance needs."""
+    keep = _fx_keep_set(db)
+    rows = list(db.scalars(select(FxRate)))
+    removed = [r.currency for r in rows if r.currency.upper() not in keep]
+    for r in rows:
+        if r.currency.upper() not in keep:
+            db.delete(r)
+    db.commit()
+    return {"deleted": len(removed), "kept": sorted(keep), "removed": sorted(removed)}
 
 
 @router.get("/web-metrics")
