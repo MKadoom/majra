@@ -38,6 +38,10 @@ export type Funding = {
   total_charged: number;
   total_spent: number;
   balance: number;
+  range_from: string;
+  range_to: string;
+  range_spent: number;
+  range_charged: number;
   daily: { date: string; spend: number; charged: number }[];
   monthly: FundingMonth[];
 };

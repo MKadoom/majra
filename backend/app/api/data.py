@@ -397,9 +397,17 @@ def funding(
 
     return {
         "currency": rep,
+        # All-time card-coverage figures (the prepaid balance is inherently
+        # cumulative — every top-up minus every dirham spent).
         "total_charged": round(total_charged, 2),
         "total_spent": round(total_spent, 2),
         "balance": round(total_charged - total_spent, 2),
+        # Totals for the *selected* daily window — these match the day rows and
+        # the chart, so the summary a user reads lines up with the table below it.
+        "range_from": win_from.isoformat(),
+        "range_to": win_to.isoformat(),
+        "range_spent": round(sum(d["spend"] for d in daily), 2),
+        "range_charged": round(sum(d["charged"] for d in daily), 2),
         "daily": daily,
         "monthly": monthly,
     }

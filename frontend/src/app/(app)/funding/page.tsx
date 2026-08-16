@@ -166,6 +166,34 @@ export default function FundingPage() {
     return { points, keys: monthPlatforms };
   }, [granularity, dates, platforms, cell, monthly, monthPlatforms]);
 
+  // Column/row totals for the visible table — guaranteed to match the rows a
+  // user is looking at, so the summary card and footer always reconcile.
+  const dailyTotals = useMemo(() => {
+    const per: Record<string, number> = {};
+    let spend = 0;
+    let charged = 0;
+    for (const d of dates) {
+      for (const p of platforms) per[p] = (per[p] ?? 0) + cell(d, p);
+      spend += dayTotal(d);
+      charged += dayCharged(d);
+    }
+    return { per, spend, charged };
+  }, [dates, platforms, cell, dayTotal, dayCharged]);
+
+  const monthlyTotals = useMemo(() => {
+    const per: Record<string, number> = {};
+    let spend = 0;
+    let charged = 0;
+    let net = 0;
+    for (const m of monthly) {
+      for (const p of monthPlatforms) per[p] = (per[p] ?? 0) + (m.by_platform[p] ?? 0);
+      spend += m.spend;
+      charged += m.charged;
+      net += m.net;
+    }
+    return { per, spend, charged, net };
+  }, [monthly, monthPlatforms]);
+
   if (loading && !funding) return <Spinner label={t("common.loading")} />;
   const ccy = funding?.currency ?? currency;
   const low = (funding?.balance ?? 0) <= 0;
@@ -262,18 +290,29 @@ export default function FundingPage() {
       {funding && (
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="panel p-4">
-            <p className="eyebrow text-muted">{t("fund.charged")}</p>
-            <p className="num mt-1 text-2xl">{money(funding.total_charged, ccy)}</p>
+            <p className="eyebrow text-muted">{t("fund.spent")}</p>
+            <p className="num mt-1 text-2xl">
+              {money(granularity === "day" ? funding.range_spent : monthlyTotals.spend, ccy)}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {t("fund.allTime")}: <span className="num">{money(funding.total_spent, ccy)}</span>
+            </p>
           </div>
           <div className="panel p-4">
-            <p className="eyebrow text-muted">{t("fund.spent")}</p>
-            <p className="num mt-1 text-2xl">{money(funding.total_spent, ccy)}</p>
+            <p className="eyebrow text-muted">{t("fund.charged")}</p>
+            <p className="num mt-1 text-2xl">
+              {money(granularity === "day" ? funding.range_charged : monthlyTotals.charged, ccy)}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {t("fund.allTime")}: <span className="num">{money(funding.total_charged, ccy)}</span>
+            </p>
           </div>
           <div className={`panel p-4 ${low ? "border-bad/50" : "border-good/50"}`}>
             <p className="eyebrow text-muted">{t("fund.balance")}</p>
             <p className={`num mt-1 text-2xl ${low ? "text-bad" : "text-good"}`}>
               {money(funding.balance, ccy)}
             </p>
+            <p className="mt-1 text-xs text-muted">{t("fund.allTime")}</p>
           </div>
         </div>
       )}
@@ -367,6 +406,28 @@ export default function FundingPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t border-line bg-raised/40 font-medium">
+                    <td className="px-2 py-2 eyebrow">{t("fund.rangeTotal")}</td>
+                    {platforms.map((p) => (
+                      <td key={p} className="num px-2 py-2 text-end">
+                        {(dailyTotals.per[p] ?? 0).toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    ))}
+                    <td className="num px-2 py-2 text-end">
+                      {dailyTotals.spend.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="num px-2 py-2 text-end text-good">
+                      {dailyTotals.charged
+                        ? dailyTotals.charged.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })
+                        : "—"}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -420,6 +481,35 @@ export default function FundingPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t border-line bg-raised/40 font-medium">
+                    <td className="px-2 py-2 eyebrow">{t("fund.rangeTotal")}</td>
+                    {monthPlatforms.map((p) => (
+                      <td key={p} className="num px-2 py-2 text-end">
+                        {(monthlyTotals.per[p] ?? 0).toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    ))}
+                    <td className="num px-2 py-2 text-end">
+                      {monthlyTotals.spend.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="num px-2 py-2 text-end text-good">
+                      {monthlyTotals.charged
+                        ? monthlyTotals.charged.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })
+                        : "—"}
+                    </td>
+                    <td
+                      className={`num px-2 py-2 text-end ${
+                        monthlyTotals.net < 0 ? "text-bad" : "text-good"
+                      }`}
+                    >
+                      {monthlyTotals.net.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
