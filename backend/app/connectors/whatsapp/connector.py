@@ -6,7 +6,10 @@ WhatsApp Manager shows — and maps it onto the ad_performance fact shape:
 
     delivered  -> impressions   (the headline "reach" / messages delivered)
     sent       -> purchases     (kept visible)
-    spend       = 0             (marketing messages are priced separately)
+    spend       = delivered * price_per_delivered  (WhatsApp bills marketing
+                                messages per delivered message, not as ad
+                                spend, so we price it — default 0.21 SAR —
+                                to show real cost instead of zero)
 
 Account-level per day (per WhatsApp Business Account). Per-*template* analytics
 (`template_analytics`) was tried first but returns zeros for MM_LITE broadcast
@@ -84,7 +87,10 @@ class WhatsAppConnector(BaseConnector):
                 AccountInfo(
                     external_id=str(waba),
                     name=info.get("name") or f"WABA {waba}",
-                    currency=info.get("currency"),
+                    # Spend is computed as delivered * price, denominated in the
+                    # pricing currency — so the fact row must carry that currency,
+                    # not whatever billing currency the WABA reports.
+                    currency=self._cfg.whatsapp_price_currency,
                 )
             )
         return out
@@ -140,6 +146,10 @@ class WhatsAppConnector(BaseConnector):
             datetime.fromtimestamp(int(ts), tz=UTC).date().isoformat()
             if ts else ""
         )
+        delivered = int(raw.get("delivered") or 0)
+        # WhatsApp bills marketing messages per delivered message; the Graph API
+        # returns no cost, so price it ourselves (default 0.21 SAR / delivered).
+        spend = round(delivered * self._cfg.whatsapp_price_per_delivered, 4)
         return {
             "date": day,
             "campaign_external_id": f"wa-messages-{raw.get('waba')}",
@@ -148,8 +158,8 @@ class WhatsAppConnector(BaseConnector):
             "ad_external_id": None,
             "breakdown": breakdown,
             "country": None, "device": None, "age": None, "gender": None, "placement": None,
-            "spend": 0.0,
-            "impressions": int(raw.get("delivered") or 0),   # messages delivered
+            "spend": spend,                                  # delivered * price
+            "impressions": delivered,                        # messages delivered
             "clicks": 0,
             "conversions": 0.0,
             "conversion_value": 0.0,

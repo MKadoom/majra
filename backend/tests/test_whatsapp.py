@@ -22,6 +22,13 @@ def test_whatsapp_not_configured():
         c._require_config()
 
 
+def test_whatsapp_spend_rate_is_configurable():
+    c = _c()
+    c._cfg.whatsapp_price_per_delivered = 0.30
+    n = c.normalize_insight({"waba": "W", "start": 1767225600, "sent": 100, "delivered": 80}, "none")
+    assert n["spend"] == 24.0            # 80 * 0.30
+
+
 def test_whatsapp_normalize_insight():
     n = _c().normalize_insight(
         {"waba": "498954053303405", "start": 1767225600, "sent": 1000, "delivered": 950},
@@ -32,7 +39,8 @@ def test_whatsapp_normalize_insight():
     assert n["campaign_name"] == "WhatsApp Marketing Messages"
     assert n["impressions"] == 950          # delivered
     assert n["purchases"] == 1000           # sent
-    assert n["spend"] == 0.0 and n["adset_external_id"] is None
+    # priced at the default 0.21 SAR / delivered (950 * 0.21)
+    assert n["spend"] == 199.5 and n["adset_external_id"] is None
 
 
 @respx.mock
