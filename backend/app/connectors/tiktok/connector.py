@@ -29,7 +29,12 @@ from app.models import RawTikTokReport
 BASE = "https://business-api.tiktok.com/open_api/v1.3"
 AUTH_PORTAL = "https://business-api.tiktok.com/portal/auth"
 
-REPORT_METRICS = ["spend", "impressions", "clicks", "conversion", "video_play_actions"]
+# complete_payment = website purchase count; total_complete_payment_rate is,
+# despite its name, the total purchase VALUE (both come from the pixel/Events API).
+REPORT_METRICS = [
+    "spend", "impressions", "clicks", "conversion", "video_play_actions",
+    "complete_payment", "total_complete_payment_rate",
+]
 
 
 class TikTokConnector(BaseConnector):
@@ -226,10 +231,10 @@ class TikTokConnector(BaseConnector):
             "impressions": int(float(m.get("impressions") or 0)),
             "clicks": int(float(m.get("clicks") or 0)),
             "conversions": float(m.get("conversion") or 0),
-            "conversion_value": 0.0,   # needs a specific TikTok value metric (v2)
+            "conversion_value": float(m.get("total_complete_payment_rate") or 0),
             "video_views": int(float(m.get("video_play_actions") or 0)),
             "leads": 0,
-            "purchases": 0,
+            "purchases": int(float(m.get("complete_payment") or 0)),
         }
 
     # ------------------------------------------------------------- http

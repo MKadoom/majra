@@ -27,23 +27,46 @@ def test_tiktok_auth_url_requires_config():
     assert "app_id=app123" in url and "state=state" in url
 
 
-def _row(day, spend, imp, clicks, conv, vv):
+def _row(day, spend, imp, clicks, conv, vv, payments=None, value=None):
+    metrics = {"spend": spend, "impressions": imp, "clicks": clicks,
+               "conversion": conv, "video_play_actions": vv}
+    if payments is not None:
+        metrics["complete_payment"] = payments
+    if value is not None:
+        metrics["total_complete_payment_rate"] = value
     return {
         "dimensions": {"ad_id": "a1", "stat_time_day": f"{day} 00:00:00"},
-        "metrics": {"spend": spend, "impressions": imp, "clicks": clicks,
-                    "conversion": conv, "video_play_actions": vv},
+        "metrics": metrics,
     }
 
 
 def test_tiktok_normalize_insight():
     n = TikTokConnector().normalize_insight(
-        _row("2026-06-01", "10.5", "1000", "50", "2", "300"), "none"
+        _row("2026-06-01", "10.5", "1000", "50", "2", "300",
+             payments="2", value="180.75"), "none"
     )
     assert n["date"] == "2026-06-01"
     assert n["ad_external_id"] == "a1"
     assert n["campaign_external_id"] is None      # report has no campaign id
     assert n["spend"] == 10.5 and n["impressions"] == 1000 and n["clicks"] == 50
     assert n["conversions"] == 2.0 and n["video_views"] == 300
+    assert n["purchases"] == 2
+    assert n["conversion_value"] == 180.75
+
+
+def test_tiktok_normalize_insight_without_payment_metrics():
+    """Ads with no pixel purchases report no payment metrics — default to 0."""
+    n = TikTokConnector().normalize_insight(
+        _row("2026-06-01", "10.5", "1000", "50", "2", "300"), "none"
+    )
+    assert n["purchases"] == 0
+    assert n["conversion_value"] == 0.0
+
+
+def test_tiktok_report_requests_payment_metrics():
+    from app.connectors.tiktok.connector import REPORT_METRICS
+    assert "complete_payment" in REPORT_METRICS
+    assert "total_complete_payment_rate" in REPORT_METRICS
 
 
 def test_tiktok_normalize_entities():
@@ -110,8 +133,10 @@ def _mock_tiktok():
         [{"ad_id": "a1", "ad_name": "TAd", "adgroup_id": "g1",
           "campaign_id": "c1", "operation_status": "ENABLE"}])))
     respx.get(f"{BASE}/report/integrated/get/").mock(return_value=_ok(_pi(
-        [_row("2026-06-01", "10.5", "1000", "50", "2", "300"),
-         _row("2026-06-02", "5.0", "500", "25", "1", "150")])))
+        [_row("2026-06-01", "10.5", "1000", "50", "2", "300",
+              payments="2", value="40.0"),
+         _row("2026-06-02", "5.0", "500", "25", "1", "150",
+              payments="1", value="22.0")])))
 
 
 @pytest.fixture
@@ -146,6 +171,8 @@ def test_tiktok_full_sync_derives_hierarchy(auth_client, db, tiktok_connection):
         "date_from": "2026-06-01", "date_to": "2026-06-02", "group_by": ["campaign"]})
     row = r.json()["data"][0]
     assert row["campaign"] == "TCamp" and row["spend"] == 15.5
+    assert row["conversion_value"] == 62.0 and row["purchases"] == 3
+    assert row["roas"] == pytest.approx(62.0 / 15.5, rel=1e-3)
 
     # idempotent re-sync
     r2 = auth_client.post("/syncs", json=body)
