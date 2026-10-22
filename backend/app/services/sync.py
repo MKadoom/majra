@@ -11,6 +11,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.connectors.base import (
+    AuthError,
     PermanentError,
     TokenSet,
     TransientError,
@@ -476,6 +477,8 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
         job.status = "success"
         job.stats = stats
         job.finished_at = datetime.now(UTC)
+        if conn.status == "needs_reauth":
+            conn.status = "active"
         _log(db, job, "sync.finished", **stats)
         db.commit()
 
@@ -492,6 +495,9 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
         job.status = "failed"
         job.error = f"{type(exc).__name__}: {exc}"
         job.finished_at = datetime.now(UTC)
+        if isinstance(exc, AuthError) and conn is not None:
+            # surfaces the dashboard's "needs reauth" badge instead of failing silently
+            db.get(Connection, conn.id).status = "needs_reauth"
         db.commit()
         SYNCS.labels(conn.platform if conn else "unknown", "failed").inc()
         raise

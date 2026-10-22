@@ -197,6 +197,44 @@ def test_permanent_error_fails_job(auth_client, db, connection):
     assert job["status"] == "failed"
     assert "190" in job["error"]
 
+    # an expired token flags the connection so the dashboard can say "reconnect"
+    db.refresh(connection)
+    assert connection.status == "needs_reauth"
+    listed = {c["id"]: c for c in auth_client.get("/connections").json()}
+    assert listed[connection.id]["status"] == "needs_reauth"
+
+
+@respx.mock
+def test_successful_sync_clears_needs_reauth(auth_client, db, connection):
+    connection.status = "needs_reauth"
+    db.commit()
+    _mock_graph()
+    r = auth_client.post(
+        "/syncs",
+        json={"connection_id": connection.id, "date_from": "2026-06-01",
+              "date_to": "2026-06-01"},
+    )
+    assert r.json()["status"] == "success", r.json()["error"]
+    db.refresh(connection)
+    assert connection.status == "active"
+
+
+@respx.mock
+def test_non_auth_permanent_error_keeps_connection_active(auth_client, db, connection):
+    respx.get(f"{GRAPH}/me/adaccounts").mock(
+        return_value=httpx.Response(
+            400, json={"error": {"code": 100, "message": "invalid parameter"}}
+        )
+    )
+    r = auth_client.post(
+        "/syncs",
+        json={"connection_id": connection.id, "date_from": "2026-06-01",
+              "date_to": "2026-06-01"},
+    )
+    assert r.json()["status"] == "failed"
+    db.refresh(connection)
+    assert connection.status == "active"
+
 
 def test_schedule_tick_creates_backfill_then_incremental(db, connection):
     s = Schedule(
