@@ -122,12 +122,15 @@ def query_metrics(
         stmt = stmt.where(F.campaign_id.in_(campaign_ids))
     if cols:
         stmt = stmt.group_by(*[GROUPABLE[g] for g in group_by])
+    else:
+        # An ungrouped aggregate always yields one row; with no matching facts
+        # that's a fake all-zero total. Return no rows instead.
+        stmt = stmt.having(func.count() > 0)
 
-    # total number of groups (1 when no group_by)
     if cols:
         total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     else:
-        total = 1
+        total = None  # 0 or 1, known once the row is fetched
 
     # sorting
     desc = False
@@ -154,6 +157,8 @@ def query_metrics(
         for k in ("impressions", "clicks", "video_views", "leads", "purchases"):
             row[k] = int(row[k])
         data.append(_derive(row))
+    if total is None:
+        total = len(data)
 
     return {
         "data": data,
