@@ -24,6 +24,10 @@ class PermanentError(Exception):
     """Not retryable: revoked auth, invalid request. Sync fails immediately."""
 
 
+class AuthError(PermanentError):
+    """Credentials expired or revoked — the user must reconnect the platform."""
+
+
 @dataclass
 class TokenSet:
     access_token: str

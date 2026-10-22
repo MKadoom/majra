@@ -9,6 +9,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -89,7 +90,7 @@ class MetaConnector(BaseConnector):
         try:
             return self._to_long_lived(tokens.access_token)
         except (TransientError, PermanentError) as exc:
-            raise PermanentError(
+            raise AuthError(
                 "meta: token expired — re-authenticate the connection"
             ) from exc
 
@@ -234,7 +235,7 @@ class MetaConnector(BaseConnector):
             code = err.get("code")
             msg = f"meta: [{code}] {err.get('message')}"
             if code in AUTH_CODES or resp.status_code in (401, 403):
-                raise PermanentError(msg)
+                raise AuthError(msg)
             if code in TRANSIENT_CODES or err.get("is_transient"):
                 last = msg
                 self._backoff(attempt)
