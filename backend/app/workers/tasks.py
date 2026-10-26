@@ -1,3 +1,4 @@
+import logging
 import httpx
 import structlog
 from celery import Celery, Task
@@ -12,6 +13,9 @@ from app.services.pacing import over_budget
 from app.services.reports import run_due_reports
 from app.services.schedules import tick_schedules
 from app.services.sync import run_sync
+
+# httpx logs full request URLs at INFO; TikTok/Meta put secrets and tokens in the query.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 log = structlog.get_logger()
 
