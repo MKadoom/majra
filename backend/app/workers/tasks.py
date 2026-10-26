@@ -1,4 +1,5 @@
 import logging
+
 import httpx
 import structlog
 from celery import Celery, Task
