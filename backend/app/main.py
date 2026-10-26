@@ -1,3 +1,4 @@
+import logging
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,9 @@ from app.core.limiter import limiter
 from app.core.observability import BUILD, PrometheusMiddleware, metrics_response
 
 VERSION = "1.0.0"
+
+# httpx logs full request URLs at INFO; TikTok/Meta put secrets and tokens in the query.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 structlog.configure(
     processors=[
