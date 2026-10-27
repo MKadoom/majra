@@ -340,6 +340,90 @@ def test_synced_account_allowlist_restricts_sync(auth_client, db, connection):
     assert r2.json()["synced_account_ids"] is None
 
 
+def _mock_accounts(*accounts: str):
+    respx.get(f"{GRAPH}/me/adaccounts").mock(return_value=httpx.Response(200, json={
+        "data": [{"id": a, "name": a, "currency": "SAR", "timezone_name": "Asia/Riyadh"}
+                 for a in accounts or ("act_1",)]}))
+
+
+def _graph_paging(request: httpx.Request) -> httpx.Response:
+    """Mimics the Graph API: `paging.next` is the same path with the full query
+    plus an `after` cursor. A bare `?access_token=` call (what a dropped query
+    sends) gets Meta's default — one account-level row dated a month back — so a
+    regression shows up as missing/wrong rows, not as a hang."""
+    q = request.url.params
+    if q.get("level") != "ad":
+        return httpx.Response(200, json={"data": [{
+            "date_start": "2026-05-02", "date_stop": "2026-06-01",
+            "spend": "999.0", "impressions": "100000"}]})
+    if q.get("after") == "CUR2":
+        return httpx.Response(200, json={"data": [
+            _insight("2026-06-02", "a1", "3.0"), _insight("2026-06-02", "a2", "2.0")]})
+    return httpx.Response(200, json={
+        "data": [_insight("2026-06-01", "a1", "10.5"), _insight("2026-06-01", "a2", "4.5")],
+        "paging": {"next": str(request.url.copy_merge_params({"after": "CUR2"}))},
+    })
+
+
+SYNC_JUNE = {"date_from": "2026-06-01", "date_to": "2026-06-02", "breakdown": "none"}
+
+
+@respx.mock
+def test_meta_next_page_keeps_cursor_and_query(auth_client, db, connection):
+    """Real `paging.next` URLs carry the cursor and every filter in their query;
+    following one must keep it (httpx used to replace it with `?access_token=`,
+    so syncs silently stopped after the first 500 rows)."""
+    _mock_accounts()
+    respx.get(f"{GRAPH}/act_1/insights").mock(side_effect=_graph_paging)
+
+    job = auth_client.post("/syncs", json={"connection_id": connection.id, **SYNC_JUNE}).json()
+    assert job["status"] == "success", job["error"]
+    facts = db.scalars(select(FactAdPerformance)).all()
+    assert len(facts) == 4
+    assert all(f.ad_id is not None for f in facts)
+    assert float(sum(f.spend for f in facts)) == 20.0
+
+
+@respx.mock
+def test_rows_outside_the_job_range_are_not_stored(auth_client, db, connection):
+    """A row dated outside the requested range escapes the delete scope and would
+    pile up on every re-sync: raw keeps it, the facts don't."""
+    _mock_accounts()
+    respx.get(f"{GRAPH}/act_1/insights").mock(return_value=httpx.Response(200, json={
+        "data": [_insight("2026-06-01", "a1", "10.0"), _insight("2026-05-15", "a1", "99.0")]}))
+
+    job = auth_client.post("/syncs", json={"connection_id": connection.id, **SYNC_JUNE}).json()
+    assert job["status"] == "success", job["error"]
+    assert job["stats"]["rows_inserted"] == 1
+    assert [str(f.date) for f in db.scalars(select(FactAdPerformance))] == ["2026-06-01"]
+    assert db.scalar(select(func.count()).select_from(RawMetaInsights)) == 2
+
+
+@respx.mock
+def test_account_failing_mid_pagination_is_skipped_whole(auth_client, db, connection):
+    """When page 2 of one account errors, none of that account's rows land —
+    page 1 must not be inserted on top of data that was never deleted."""
+    _mock_accounts("act_1", "act_2")
+
+    def act_1(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("after"):
+            return httpx.Response(400, json={"error": {"code": 100, "message": "bad cursor"}})
+        return httpx.Response(200, json={
+            "data": [_insight("2026-06-01", "a1", "10.0")],
+            "paging": {"next": str(request.url.copy_merge_params({"after": "CUR2"}))},
+        })
+
+    respx.get(f"{GRAPH}/act_1/insights").mock(side_effect=act_1)
+    respx.get(f"{GRAPH}/act_2/insights").mock(return_value=httpx.Response(200, json={
+        "data": [{**_insight("2026-06-01", "b1", "5.0"), "campaign_id": "c2", "adset_id": "s2"}]}))
+
+    job = auth_client.post("/syncs", json={"connection_id": connection.id, **SYNC_JUNE}).json()
+    assert job["status"] == "success", job["error"]
+    assert job["stats"]["accounts_skipped"] == 1
+    facts = db.scalars(select(FactAdPerformance)).all()
+    assert len(facts) == 1 and float(facts[0].spend) == 5.0
+
+
 @respx.mock
 def test_metrics_currency_normalization(auth_client, db, connection):
     """spend/value from mixed-currency accounts blend into a reporting currency."""

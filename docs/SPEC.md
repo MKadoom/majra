@@ -144,7 +144,10 @@ never mutated.
   `restatement_days` default 7 (platforms restate conversions retroactively).
 - Write path (`run_sync`): append raw pages, upsert dims, then **delete+insert**
   facts scoped to (this connection's accounts, this breakdown, this date range)
-  in one transaction → every sync is idempotent and safe to retry.
+  in one transaction → every sync is idempotent and safe to retry. A row dated
+  outside the job's range is kept in raw but never written to facts (it would
+  escape the delete scope), and an account that errors mid-fetch contributes no
+  rows at all (its existing facts stay untouched).
 - Dim resolution derives an ad's campaign/ad-set from the entity hierarchy when
   an insight row carries only the ad id. Meta and Google report full ids; TikTok
   and Snapchat report at ad level only, so their facts still get campaign_id and
