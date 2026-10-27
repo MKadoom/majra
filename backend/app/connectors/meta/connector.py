@@ -182,8 +182,8 @@ class MetaConnector(BaseConnector):
         }
 
     def normalize_insight(self, raw: dict, breakdown: str) -> dict:
-        purchases = mapping.sum_actions(raw.get("actions"), mapping.PURCHASE_TYPES)
-        leads = mapping.sum_actions(raw.get("actions"), mapping.LEAD_TYPES)
+        purchases = mapping.action_total(raw.get("actions"), mapping.PURCHASE)
+        leads = mapping.action_total(raw.get("actions"), mapping.LEAD)
         return {
             "date": raw["date_start"],
             "campaign_external_id": raw.get("campaign_id"),
@@ -204,11 +204,11 @@ class MetaConnector(BaseConnector):
             "purchases": int(purchases),
             "leads": int(leads),
             "conversions": purchases + leads,
-            "conversion_value": mapping.sum_actions(
-                raw.get("action_values"), mapping.PURCHASE_TYPES
+            "conversion_value": mapping.action_total(
+                raw.get("action_values"), mapping.PURCHASE
             ),
             "video_views": int(
-                mapping.sum_actions(raw.get("video_play_actions"), mapping.VIDEO_VIEW_TYPES)
+                mapping.action_total(raw.get("video_play_actions"), mapping.VIDEO_VIEW)
             ),
         }
 
