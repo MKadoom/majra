@@ -252,8 +252,9 @@ const en: Dict = {
   "conn.authorize": "Authorize",
   "conn.serviceAccount": "Service account",
   "conn.saHint":
-    "{platform} reads through a Google service account. Grant it access in Google, then paste its key file here.",
+    "{platform} reads through a Google service account. Grant it access in Google, then choose or paste its key file here.",
   "conn.saKey": "Service account key (JSON)",
+  "conn.saFile": "Choose key file",
   "conn.propertyId": "GA4 property ID",
   "conn.save": "Save connection",
   "conn.badJson": "That isn't valid JSON. Paste the whole key file.",
@@ -587,8 +588,9 @@ const ar: Dict = {
   "conn.authorize": "تفويض",
   "conn.serviceAccount": "حساب خدمة",
   "conn.saHint":
-    "{platform} تقرأ عبر حساب خدمة من جوجل. امنحه صلاحية الوصول في جوجل، ثم الصق ملف المفتاح هنا.",
+    "{platform} تقرأ عبر حساب خدمة من جوجل. امنحه صلاحية الوصول في جوجل، ثم اختر ملف المفتاح أو الصقه هنا.",
   "conn.saKey": "مفتاح حساب الخدمة (JSON)",
+  "conn.saFile": "اختر ملف المفتاح",
   "conn.propertyId": "معرّف خاصية GA4",
   "conn.save": "حفظ الاتصال",
   "conn.badJson": "هذا ليس JSON صالحًا. الصق ملف المفتاح كاملًا.",
