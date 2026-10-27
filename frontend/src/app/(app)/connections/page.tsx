@@ -566,6 +566,20 @@ function AddConnection({
               value={saJson}
               onChange={(e) => setSaJson(e.target.value)}
             />
+            {/* Google hands the key over as a downloaded .json file — reading it
+                here spares people opening it and pasting raw JSON. */}
+            <label className="btn-quiet mt-2 cursor-pointer">
+              {t("conn.saFile")}
+              <input
+                type="file"
+                accept=".json,application/json"
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setSaJson(await file.text());
+                }}
+              />
+            </label>
           </div>
           {chosen.platform === "ga4" && (
             <div>

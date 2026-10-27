@@ -88,6 +88,49 @@ def test_meta_normalize_insight():
     assert n["breakdown"] == "none" and n["country"] is None
 
 
+def test_meta_overlapping_action_types_count_once():
+    """Meta repeats one purchase under omni_purchase, purchase and the pixel type
+    (and one lead under lead + its channel types); each must count once, not 3×."""
+    row = {
+        **FIXTURE_ROW,
+        "actions": [
+            {"action_type": "omni_purchase", "value": "2"},
+            {"action_type": "purchase", "value": "2"},
+            {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "2"},
+            {"action_type": "lead", "value": "3"},
+            {"action_type": "offsite_conversion.fb_pixel_lead", "value": "1"},
+            {"action_type": "onsite_conversion.lead_grouped", "value": "2"},
+        ],
+        "action_values": [
+            {"action_type": "omni_purchase", "value": "150.0"},
+            {"action_type": "purchase", "value": "150.0"},
+            {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "150.0"},
+        ],
+    }
+    n = MetaConnector().normalize_insight(row, "none")
+    assert n["purchases"] == 2 and n["leads"] == 3
+    assert n["conversions"] == 5
+    assert n["conversion_value"] == 150.0
+
+
+def test_meta_channel_parts_summed_without_aggregate():
+    """With no aggregate type reported, the disjoint website + on-Meta counts add up."""
+    row = {
+        **FIXTURE_ROW,
+        "actions": [
+            {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "1"},
+            {"action_type": "onsite_conversion.purchase", "value": "1"},
+        ],
+        "action_values": [
+            {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "40"},
+            {"action_type": "onsite_conversion.purchase", "value": "60"},
+        ],
+    }
+    n = MetaConnector().normalize_insight(row, "none")
+    assert n["purchases"] == 2 and n["leads"] == 0
+    assert n["conversion_value"] == 100.0
+
+
 def test_meta_normalize_country_breakdown():
     row = {**FIXTURE_ROW, "country": "SA"}
     n = MetaConnector().normalize_insight(row, "country")
