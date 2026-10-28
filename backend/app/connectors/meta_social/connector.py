@@ -204,10 +204,15 @@ class MetaSocialConnector(BaseConnector):
     def _get(self, url: str, params: dict, tokens: TokenSet | None = None) -> dict:
         if tokens:
             params = {**params, "access_token": tokens.access_token}
+        # Merge into the URL's own query rather than passing `params=`: httpx
+        # replaces an existing query string with `params`, which turned every
+        # `paging.next` request into a bare `?access_token=` call — Meta then
+        # answered with one default account-level row instead of page 2.
+        url = str(httpx.URL(url).copy_merge_params(params))
         last = "meta_social: retries exhausted"
         for attempt in range(5):
             try:
-                resp = httpx.get(url, params=params, timeout=90)
+                resp = httpx.get(url, timeout=90)
             except httpx.HTTPError as exc:
                 last = f"meta_social: network error {exc}"
                 self._backoff(attempt)

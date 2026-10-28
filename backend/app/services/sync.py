@@ -199,7 +199,11 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
     for acc in accounts:
         # Per-account isolation: one ad account returning a persistent error
         # (e.g. Meta HTTP 500 on a disabled/broken account) must not sink the
-        # whole sync. Skip that account and keep the healthy ones.
+        # whole sync. Skip that account and keep the healthy ones. Its rows are
+        # collected separately so a failure mid-pagination doesn't insert half
+        # an account on top of data that was never deleted.
+        acc_facts: list[dict] = []
+        out_of_range = 0
         try:
             if getattr(connector, "insights_carry_hierarchy", False):
                 # Insights self-describe the hierarchy (Meta): skip the entity
@@ -216,12 +220,19 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
             ):
                 _append_raw(db, raw_model, conn, job, acc.external_id, raw)
                 norm = connector.normalize_insight(raw, job.breakdown)
+                day = date.fromisoformat(norm["date"])
+                if not job.date_from <= day <= job.date_to:
+                    # The delete half of delete+insert only covers the job's
+                    # range, so a row dated outside it would never be replaced
+                    # and would pile up on every re-sync. Raw keeps it.
+                    out_of_range += 1
+                    continue
                 campaign_id, adset_id, ad_id = _resolve_dims(
                     db, acc, norm, camp_map, adset_map, ad_map, ad_parents
                 )
-                facts.append(
+                acc_facts.append(
                     dict(
-                        date=date.fromisoformat(norm["date"]),
+                        date=day,
                         platform=acc.platform_override or conn.platform,
                         account_id=acc.id,
                         campaign_id=campaign_id,
@@ -252,7 +263,13 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
                 account=acc.external_id, error=f"{type(exc).__name__}: {exc}",
             )
             continue
+        facts.extend(acc_facts)
         synced_acc_ids.append(acc.id)
+        if out_of_range:
+            _log(
+                db, job, "insights.out_of_range", level="warning",
+                account=acc.external_id, rows=out_of_range,
+            )
         _log(db, job, "insights.fetched", account=acc.external_id, rows=fetched)
         total_rows += fetched
 
