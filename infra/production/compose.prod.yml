@@ -51,6 +51,8 @@ services:
       # With 4 workers an in-process limit would let 4x the traffic through.
       MAJRA_RATE_LIMIT_STORAGE: redis://redis:6379/1
       MAJRA_HSTS_ENABLED: "true"
+      # The API has no published port here; Prometheus scrapes it internally.
+      MAJRA_METRICS_IN_PRODUCTION: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS localhost:8000/health | grep -q '\"db\":true'"]
       interval: 15s

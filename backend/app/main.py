@@ -1,7 +1,7 @@
 import logging
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -64,6 +64,11 @@ app = FastAPI(
         "**Note:** `/metrics` is the ad-performance query API. Prometheus scrapes "
         "`/_metrics`."
     ),
+    # Production exposes no schema or interactive docs: they map every route
+    # for an attacker and nothing in production needs them.
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 app.state.limiter = limiter
@@ -123,5 +128,9 @@ def health():
 @app.get("/_metrics", tags=["ops"], include_in_schema=False)
 def prometheus_metrics():
     """Prometheus scrape target. Deliberately NOT /metrics — that path is the
-    ad-performance query API."""
+    ad-performance query API. Not served in production (it leaks route names and
+    traffic volumes) unless MAJRA_METRICS_IN_PRODUCTION opts in for an internal
+    scraper."""
+    if settings.is_production and not settings.metrics_in_production:
+        raise HTTPException(404, "Not Found")
     return metrics_response()

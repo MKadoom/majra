@@ -1,3 +1,17 @@
+// Public machine API (/v1/*): API-key read endpoints used by the MCP server,
+// Looker Studio and Sheets. Anything not listed here 404s at the edge.
+const V1_READ_PATHS = [
+  "/metrics",
+  "/web-metrics",
+  "/social-metrics",
+  "/accounts",
+  "/gtm-resources",
+  "/export",
+  "/freshness",
+  "/pacing",
+  "/anomalies",
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -15,7 +29,10 @@ const nextConfig = {
       // the other door — for machines. Headers pass through untouched, so an
       // `Authorization: Bearer <majra api key>` reaches the backend as-is.
       // This is what the MCP server, Looker Studio and Sheets connect to.
-      { source: "/v1/:path*", destination: `${api}/:path*` },
+      // Only an explicit allow-list of READ paths is forwarded — never auth,
+      // connections, FX writes, API docs or /_metrics. Each path is exact (no
+      // sub-paths), and every one is GET-only on the backend.
+      ...V1_READ_PATHS.map((p) => ({ source: `/v1${p}`, destination: `${api}${p}` })),
       // Client-facing invite pages: someone with a link authorises their own ad
       // account without a majra login, so these must be public and are served
       // by the backend, not the app shell.

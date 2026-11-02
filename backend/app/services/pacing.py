@@ -36,16 +36,20 @@ def _mtd_spend(db: Session, budget: Budget, first: date, today: date) -> float:
     return float(res["data"][0]["spend"]) if res["data"] else 0.0
 
 
-def pacing_report(db: Session, today: date | None = None) -> list[dict]:
+def pacing_report(
+    db: Session, today: date | None = None, user_id: int | None = None
+) -> list[dict]:
+    """`user_id` limits the report to that user's budgets; None = all (beat)."""
     today = today or date.today()
     first = today.replace(day=1)
     days_in_month = calendar.monthrange(today.year, today.month)[1]
     elapsed = today.day / days_in_month  # fraction of the month elapsed (incl today)
 
     out: list[dict] = []
-    for b in db.scalars(
-        select(Budget).where(Budget.enabled.is_(True)).order_by(Budget.id)
-    ):
+    stmt = select(Budget).where(Budget.enabled.is_(True))
+    if user_id is not None:
+        stmt = stmt.where(Budget.user_id == user_id)
+    for b in db.scalars(stmt.order_by(Budget.id)):
         budget = float(b.amount_monthly)
         spent = _mtd_spend(db, b, first, today)
         projected = spent / elapsed if elapsed else 0.0

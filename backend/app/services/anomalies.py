@@ -24,7 +24,9 @@ def anomaly_report(
     today: date | None = None,
     lookback: int = DEFAULT_LOOKBACK,
     threshold: float = DEFAULT_THRESHOLD,
+    user_id: int | None = None,
 ) -> list[dict]:
+    """`user_id` limits the scan to that user's connections; None = all (beat)."""
     today = today or date.today()
     end = today - timedelta(days=1)  # yesterday = last complete day
     start = end - timedelta(days=lookback)
@@ -36,6 +38,7 @@ def anomaly_report(
         breakdown="none",
         group_by=["account", "date"],
         page_size=1_000_000,
+        user_id=user_id,
     )
 
     by_acc: dict[str, dict[str, float]] = {}

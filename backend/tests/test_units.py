@@ -9,7 +9,10 @@ def test_health(client):
     assert body["environment"] == "test"
 
 
-def test_auth_flow(client):
+def test_auth_flow(client, monkeypatch):
+    # Sign-up is closed once a user exists; open it so the duplicate check runs.
+    from app.core import config
+    monkeypatch.setattr(config.settings, "allow_registration", True)
     r = client.post(
         "/auth/register", json={"email": "a@b.co", "password": "longenough"}
     )

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, require_owner
 from app.api.keys import get_read_principal
 from app.connectors.base import BREAKDOWN_SETS
 from app.core.config import settings
@@ -507,7 +507,7 @@ def delete_budget(
 def pacing(user: User = Depends(get_read_principal), db: Session = Depends(get_db)):
     """Month-to-date spend vs budget for each budget, with a projection and an
     over/under/on_track status."""
-    return pacing_report(db)
+    return pacing_report(db, user_id=user.id)
 
 
 # ---------------------------------------------------------------- anomalies
@@ -520,7 +520,7 @@ def anomalies(
 ):
     """Accounts whose latest day's spend deviates from its trailing average by
     more than `threshold` (spike or drop)."""
-    return anomaly_report(db, lookback=lookback, threshold=threshold)
+    return anomaly_report(db, lookback=lookback, threshold=threshold, user_id=user.id)
 
 
 # ---------------------------------------------------------------- freshness
@@ -530,7 +530,7 @@ def freshness(
 ):
     """Per-connection data freshness: newest synced day, days behind, and whether
     it has gone stale (stopped delivering)."""
-    return freshness_report(db)
+    return freshness_report(db, user_id=user.id)
 
 
 # ------------------------------------------------------------------- fx rates
@@ -554,7 +554,7 @@ def list_fx_rates(
 @router.put("/fx-rates")
 def set_fx_rate(
     body: FxRateIn,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_owner),
     db: Session = Depends(get_db),
 ):
     """Upsert the exchange rate for one currency (owner-only). USD is implicitly
@@ -572,7 +572,7 @@ def set_fx_rate(
 
 @router.post("/fx-rates/refresh")
 def refresh_fx(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    user: User = Depends(require_owner), db: Session = Depends(get_db)
 ):
     """Pull the latest rates from the configured public provider (owner-only)."""
     from app.services.fx import refresh_fx_rates
@@ -596,7 +596,7 @@ def _fx_keep_set(db: Session) -> set[str]:
 @router.delete("/fx-rates/{currency}", status_code=204)
 def delete_fx_rate(
     currency: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_owner),
     db: Session = Depends(get_db),
 ):
     """Remove one currency's rate (owner-only). USD is the implicit base and a
@@ -615,7 +615,7 @@ def delete_fx_rate(
 
 @router.post("/fx-rates/prune")
 def prune_fx_rates(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    user: User = Depends(require_owner), db: Session = Depends(get_db)
 ):
     """Delete every rate except USD and the currencies accounts actually use —
     collapses a bulk auto-fetched list down to what this instance needs."""
@@ -824,15 +824,26 @@ def gtm_resources(
     captured_at), optionally filtered by account and resource kind."""
     from app.models import Account, GtmResource
 
+    mine = (
+        select(Account.id)
+        .join(Connection, Connection.id == Account.connection_id)
+        .where(
+            Account.platform == "gtm",
+            Connection.user_id == user.id,
+            Connection.deleted_at.is_(None),
+        )
+    )
     latest = db.scalar(
-        select(func.max(GtmResource.captured_at))
-        .join(Account, Account.id == GtmResource.account_id)
-        .where(Account.platform == "gtm")
+        select(func.max(GtmResource.captured_at)).where(
+            GtmResource.account_id.in_(mine)
+        )
     )
     if latest is None:
         return {"captured_at": None, "data": []}
 
-    stmt = select(GtmResource).where(GtmResource.captured_at == latest)
+    stmt = select(GtmResource).where(
+        GtmResource.captured_at == latest, GtmResource.account_id.in_(mine)
+    )
     if account_id:
         stmt = stmt.where(GtmResource.account_id == account_id)
     if kind:

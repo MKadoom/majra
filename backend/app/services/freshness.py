@@ -21,16 +21,22 @@ DEFAULT_GRACE_DAYS = 2
 
 
 def freshness_report(
-    db: Session, today: date | None = None, grace_days: int = DEFAULT_GRACE_DAYS
+    db: Session,
+    today: date | None = None,
+    grace_days: int = DEFAULT_GRACE_DAYS,
+    user_id: int | None = None,
 ) -> list[dict]:
+    """`user_id` scopes the report to one user's connections (the API always
+    passes it); None means every connection, for the internal beat task."""
     today = today or date.today()
     yesterday = today - timedelta(days=1)
     out: list[dict] = []
-    conns = db.scalars(
-        select(Connection)
-        .where(Connection.status != "disabled", Connection.deleted_at.is_(None))
-        .order_by(Connection.id)
+    stmt = select(Connection).where(
+        Connection.status != "disabled", Connection.deleted_at.is_(None)
     )
+    if user_id is not None:
+        stmt = stmt.where(Connection.user_id == user_id)
+    conns = db.scalars(stmt.order_by(Connection.id))
     for c in conns:
         wm = watermark(db, c.id, "none")
         days_stale = (yesterday - wm).days if wm else None
