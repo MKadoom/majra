@@ -10,6 +10,7 @@ const V1_READ_PATHS = [
   "/freshness",
   "/pacing",
   "/anomalies",
+  "/reconciliation",
 ];
 
 /** @type {import('next').NextConfig} */

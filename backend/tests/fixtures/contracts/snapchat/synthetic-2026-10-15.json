@@ -1,0 +1,161 @@
+{
+ "_provenance": {
+  "kind": "synthetic",
+  "note": "Built from the platform's documented response shape. Replace with a real recording: python -m scripts.record_contracts --connection-id N --date 2026-10-15",
+  "date": "2026-10-15",
+  "platform": "snapchat",
+  "account": "sa1"
+ },
+ "exchanges": [
+  {
+   "request": {
+    "method": "GET",
+    "host": "adsapi.snapchat.com",
+    "path": "/v1/me/organizations",
+    "params": {}
+   },
+   "status": 200,
+   "response": {
+    "organizations": [
+     {
+      "organization": {
+       "id": "org1",
+       "name": "redacted"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "adsapi.snapchat.com",
+    "path": "/v1/organizations/org1/adaccounts",
+    "params": {}
+   },
+   "status": 200,
+   "response": {
+    "adaccounts": [
+     {
+      "adaccount": {
+       "id": "sa1",
+       "name": "redacted",
+       "currency": "SAR",
+       "timezone": "Asia/Riyadh"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "adsapi.snapchat.com",
+    "path": "/v1/adaccounts/sa1",
+    "params": {}
+   },
+   "status": 200,
+   "response": {
+    "adaccounts": [
+     {
+      "adaccount": {
+       "id": "sa1",
+       "name": "redacted",
+       "timezone": "Asia/Riyadh"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "adsapi.snapchat.com",
+    "path": "/v1/adaccounts/sa1/stats",
+    "params": {
+     "breakdown": "ad"
+    }
+   },
+   "status": 200,
+   "response": {
+    "timeseries_stats": [
+     {
+      "timeseries_stat": {
+       "id": "sa1",
+       "breakdown_stats": {
+        "ad": [
+         {
+          "id": "ad1",
+          "timeseries": [
+           {
+            "start_time": "2026-10-15T00:00:00.000+03:00",
+            "end_time": "x",
+            "stats": {
+             "spend": 12500000,
+             "impressions": 1000,
+             "swipes": 20,
+             "conversion_purchases": 2,
+             "conversion_purchases_value": 300000000,
+             "video_views": 0
+            }
+           }
+          ]
+         },
+         {
+          "id": "ad2",
+          "timeseries": [
+           {
+            "start_time": "2026-10-15T00:00:00.000+03:00",
+            "end_time": "x",
+            "stats": {
+             "spend": 7500000,
+             "impressions": 500,
+             "swipes": 5,
+             "conversion_purchases": 0,
+             "conversion_purchases_value": 0
+            }
+           }
+          ]
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "adsapi.snapchat.com",
+    "path": "/v1/adaccounts/sa1/stats",
+    "params": {
+     "granularity": "DAY"
+    }
+   },
+   "status": 200,
+   "response": {
+    "timeseries_stats": [
+     {
+      "timeseries_stat": {
+       "id": "sa1",
+       "timeseries": [
+        {
+         "start_time": "2026-10-15T00:00:00.000+03:00",
+         "end_time": "x",
+         "stats": {
+          "spend": 20000000,
+          "impressions": 1500,
+          "swipes": 25,
+          "conversion_purchases": 2,
+          "conversion_purchases_value": 300000000
+         }
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

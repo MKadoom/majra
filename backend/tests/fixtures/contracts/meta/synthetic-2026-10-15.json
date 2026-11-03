@@ -1,0 +1,132 @@
+{
+ "_provenance": {
+  "kind": "synthetic",
+  "note": "Built from the platform's documented response shape. Replace with a real recording: python -m scripts.record_contracts --connection-id N --date 2026-10-15",
+  "date": "2026-10-15",
+  "platform": "meta",
+  "account": "act_111"
+ },
+ "exchanges": [
+  {
+   "request": {
+    "method": "GET",
+    "host": "graph.facebook.com",
+    "path": "/v21.0/me/adaccounts",
+    "params": {
+     "fields": "name,currency,timezone_name"
+    }
+   },
+   "status": 200,
+   "response": {
+    "data": [
+     {
+      "id": "act_111",
+      "name": "redacted",
+      "currency": "SAR",
+      "timezone_name": "Asia/Riyadh"
+     }
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "graph.facebook.com",
+    "path": "/v21.0/act_111/insights",
+    "params": {
+     "level": "ad"
+    }
+   },
+   "status": 200,
+   "response": {
+    "data": [
+     {
+      "date_start": "2026-10-15",
+      "date_stop": "2026-10-15",
+      "campaign_id": "c1",
+      "campaign_name": "redacted",
+      "adset_id": "s1",
+      "adset_name": "redacted",
+      "ad_id": "a1",
+      "ad_name": "redacted",
+      "spend": "120.50",
+      "impressions": "10000",
+      "clicks": "150",
+      "actions": [
+       {
+        "action_type": "omni_purchase",
+        "value": "3"
+       },
+       {
+        "action_type": "offsite_conversion.fb_pixel_purchase",
+        "value": "3"
+       },
+       {
+        "action_type": "link_click",
+        "value": "140"
+       }
+      ],
+      "action_values": [
+       {
+        "action_type": "omni_purchase",
+        "value": "450.00"
+       }
+      ]
+     },
+     {
+      "date_start": "2026-10-15",
+      "date_stop": "2026-10-15",
+      "campaign_id": "c1",
+      "campaign_name": "redacted",
+      "adset_id": "s1",
+      "adset_name": "redacted",
+      "ad_id": "a2",
+      "ad_name": "redacted",
+      "spend": "79.50",
+      "impressions": "6000",
+      "clicks": "60",
+      "actions": [
+       {
+        "action_type": "omni_purchase",
+        "value": "1"
+       }
+      ],
+      "action_values": [
+       {
+        "action_type": "omni_purchase",
+        "value": "100.00"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "graph.facebook.com",
+    "path": "/v21.0/act_111/insights",
+    "params": {
+     "level": "account"
+    }
+   },
+   "status": 200,
+   "response": {
+    "data": [
+     {
+      "date_start": "2026-10-15",
+      "date_stop": "2026-10-15",
+      "spend": "200.00",
+      "impressions": "16000",
+      "actions": [
+       {
+        "action_type": "omni_purchase",
+        "value": "4"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

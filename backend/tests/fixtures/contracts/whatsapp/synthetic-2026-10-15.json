@@ -1,0 +1,104 @@
+{
+ "_provenance": {
+  "kind": "synthetic",
+  "note": "Built from the platform's documented response shape. Replace with a real recording: python -m scripts.record_contracts --connection-id N --date 2026-10-15",
+  "date": "2026-10-15",
+  "platform": "whatsapp",
+  "account": "498954053303405"
+ },
+ "exchanges": [
+  {
+   "request": {
+    "method": "GET",
+    "host": "graph.facebook.com",
+    "path": "/v21.0/498954053303405",
+    "params": {
+     "fields": "id,name,currency"
+    }
+   },
+   "status": 200,
+   "response": {
+    "id": "498954053303405",
+    "name": "redacted",
+    "currency": "SAR"
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "graph.facebook.com",
+    "path": "/v21.0/498954053303405",
+    "params": {
+     "fields": "analytics.start(1792011600).end(1792098000).granularity(HALF_HOUR)"
+    }
+   },
+   "status": 200,
+   "response": {
+    "analytics": {
+     "granularity": "HALF_HOUR",
+     "data_points": [
+      {
+       "start": 1792047600,
+       "end": 1792049400,
+       "sent": 600,
+       "delivered": 580
+      },
+      {
+       "start": 1792096200,
+       "end": 1792098000,
+       "sent": 40,
+       "delivered": 38
+      }
+     ]
+    },
+    "id": "498954053303405"
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "host": "graph.facebook.com",
+    "path": "/v21.0/498954053303405",
+    "params": {
+     "fields": "pricing_analytics.start(1792011600).end(1792098000).granularity(HALF_HOUR).dimensions([\"PRICING_CATEGORY\",\"PRICING_TYPE\"])"
+    }
+   },
+   "status": 200,
+   "response": {
+    "pricing_analytics": {
+     "data": [
+      {
+       "data_points": [
+        {
+         "start": 1792047600,
+         "end": 1792049400,
+         "pricing_category": "MARKETING",
+         "pricing_type": "REGULAR",
+         "volume": 580,
+         "cost": 121.8
+        },
+        {
+         "start": 1792096200,
+         "end": 1792098000,
+         "pricing_category": "MARKETING",
+         "pricing_type": "REGULAR",
+         "volume": 38,
+         "cost": 7.98
+        },
+        {
+         "start": 1792054800,
+         "end": 1792056600,
+         "pricing_category": "SERVICE",
+         "pricing_type": "FREE_CUSTOMER_SERVICE",
+         "volume": 4,
+         "cost": 0
+        }
+       ]
+      }
+     ]
+    },
+    "id": "498954053303405"
+   }
+  }
+ ]
+}
