@@ -190,7 +190,7 @@ def test_google_full_sync_and_metrics(auth_client, db, google_env, google_connec
 
 
 # ------------------------------- the Phase-4 proof: blended in ONE query -----
-GRAPH = "https://graph.facebook.com/v21.0"
+GRAPH = "https://graph.facebook.com/v26.0"
 
 
 def _mock_meta_minimal():

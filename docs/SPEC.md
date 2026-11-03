@@ -142,6 +142,14 @@ Other facts:
   followers`. `grain` is page | ig_user | post; `followers` is an as-of-date
   snapshot (the `/social-metrics` query maxes it, the daily flows are summed).
   Idempotency via delete+insert scoped to (account, date range).
+  Source metrics (Graph v26.0, T8): page `impressions` = `page_impressions`,
+  `reach` = `page_total_media_view_unique` (replaces `page_impressions_unique`,
+  retired in v26), `engagement` = `page_post_engagements`, `followers` =
+  `page_fans`; Instagram `reach`, `followers` = `follower_count`, and
+  `impressions` = daily `views` (metric_type=total_value — IG `impressions`
+  was retired 2025-04-21). If Meta rejects a metric the others are fetched one
+  by one and an `api.version` alert is raised. Reach/impressions are therefore
+  "media views" from these dates on, not comparable 1:1 with older rows.
 - `gtm_resources` (GTM) — built. A config snapshot, not daily metrics:
   `account_id, kind (container|workspace|tag|trigger|variable), container_ref,
   workspace_ref, external_id, name, type, data JSONB, captured_at`. Each sync
@@ -263,6 +271,14 @@ own day boundaries — only if HALF_HOUR is refused).
    in SAR matching the per-platform native totals converted at the stored
    rates, and ROAS = purchase_value / spend — the review's reference figures
    are 120,313 SAR and 1.42 (to be re-checked against the live API after deploy).
+
+## §5c Meta Graph API version (T8)
+All Meta surfaces — ads (`meta`), Pages/Instagram (`meta_social`), WhatsApp
+analytics and the WhatsApp alert sender — call **Graph v26.0** (v21.0 is
+retired 2027-01-21). `python -m scripts.meta_parity --connection-id N` checks,
+read-only, that February 2026 account-level totals are identical on v21.0 and
+v26.0 and equal the reference 86,914.24 spend / 1,629 purchases / 177,721.76
+purchase value.
 
 ## §5b Reconciliation and contract fixtures (T7)
 - `BaseConnector.fetch_account_totals(tokens, account, date_from, date_to)` —

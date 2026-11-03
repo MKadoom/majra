@@ -21,7 +21,7 @@ from app.connectors.whatsapp.connector import (
     riyadh_midnight_ts,
 )
 
-BASE = "https://graph.facebook.com/v21.0"
+BASE = "https://graph.facebook.com/v26.0"
 
 
 def _c() -> WhatsAppConnector:

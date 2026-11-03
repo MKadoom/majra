@@ -30,7 +30,7 @@ from app.connectors.base import (
 from app.core.config import settings
 from app.models import RawMetaSocial
 
-GRAPH_VERSION = "v21.0"
+GRAPH_VERSION = "v26.0"
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
 DIALOG = f"https://www.facebook.com/{GRAPH_VERSION}/dialog/oauth"
 SCOPES = "pages_show_list,pages_read_engagement,read_insights,instagram_basic,instagram_manage_insights"
@@ -38,14 +38,19 @@ SCOPES = "pages_show_list,pages_read_engagement,read_insights,instagram_basic,in
 AUTH_CODES = {102, 190}
 TRANSIENT_CODES = {1, 2, 4, 17, 32, 341, 613}
 
+# Page metrics. `page_impressions_unique` is deprecated with Graph v26.0 (and
+# then errors on EVERY version); Meta's documented replacement for reach is
+# `page_total_media_view_unique` (v25.0 changelog).
 PAGE_METRICS = {
     "page_impressions": "impressions",
-    "page_impressions_unique": "reach",
+    "page_total_media_view_unique": "reach",
     "page_post_engagements": "engagement",
     "page_fans": "followers",
 }
+# Instagram user metrics with a daily time series. IG `impressions` was retired
+# for all versions on 2025-04-21; its replacement `views` is only served as a
+# per-period total (metric_type=total_value), so it's fetched day by day below.
 IG_METRICS = {
-    "impressions": "impressions",
     "reach": "reach",
     "follower_count": "followers",
 }
@@ -148,24 +153,67 @@ class MetaSocialConnector(BaseConnector):
                               tzinfo=UTC) + timedelta(days=2)).timestamp())
 
         # Page-level insights
-        page_data = self._get(
-            f"{GRAPH}/{page_id}/insights",
-            {"metric": ",".join(PAGE_METRICS), "period": "day",
-             "since": since, "until": until},
-            page_token,
-        ).get("data", [])
+        page_data = self._insights(page_id, PAGE_METRICS, since, until, page_token)
         yield from self._pivot(page_data, PAGE_METRICS, "page", page_id, date_from, date_to)
 
         # Instagram user insights (if a business account is linked)
         ig_id = self._ig_accounts.get(page_id)
         if ig_id:
-            ig_data = self._get(
-                f"{GRAPH}/{ig_id}/insights",
-                {"metric": ",".join(IG_METRICS), "period": "day",
-                 "since": since, "until": until},
-                page_token,
-            ).get("data", [])
-            yield from self._pivot(ig_data, IG_METRICS, "ig_user", ig_id, date_from, date_to)
+            ig_data = self._insights(ig_id, IG_METRICS, since, until, page_token)
+            rows = {r["date"]: r for r in self._pivot(
+                ig_data, IG_METRICS, "ig_user", ig_id, date_from, date_to)}
+            for d, views in self._ig_daily_views(ig_id, date_from, date_to, page_token):
+                rows.setdefault(d, {"grain": "ig_user", "external_ref": ig_id, "date": d})
+                rows[d]["impressions"] = views
+            yield from (rows[d] for d in sorted(rows))
+
+    def _insights(self, obj_id, metric_map, since, until, token) -> list[dict]:
+        """All metrics in one call; if Meta rejects the batch (a metric was
+        retired), fall back to one call per metric so the others still land,
+        and record the dead metric as an API-version warning (T2 alert)."""
+        params = {"period": "day", "since": since, "until": until}
+        try:
+            return self._get(f"{GRAPH}/{obj_id}/insights",
+                             {**params, "metric": ",".join(metric_map)}, token).get("data", [])
+        except AuthError:
+            raise
+        except PermanentError:
+            pass
+        out: list[dict] = []
+        for metric in metric_map:
+            try:
+                out += self._get(f"{GRAPH}/{obj_id}/insights",
+                                 {**params, "metric": metric}, token).get("data", [])
+            except AuthError:
+                raise
+            except PermanentError as exc:
+                self._warn(f"meta_social: metric '{metric}' rejected by Graph "
+                           f"{GRAPH_VERSION} — {exc}")
+        return out
+
+    def _ig_daily_views(self, ig_id, date_from, date_to, token):
+        day = date_from
+        while day <= date_to:
+            since = int(datetime(day.year, day.month, day.day, tzinfo=UTC).timestamp())
+            try:
+                data = self._get(f"{GRAPH}/{ig_id}/insights", {
+                    "metric": "views", "metric_type": "total_value", "period": "day",
+                    "since": since, "until": since + 86400}, token).get("data", [])
+            except AuthError:
+                raise
+            except PermanentError as exc:
+                self._warn(f"meta_social: instagram 'views' rejected — {exc}")
+                return
+            for series in data:
+                if series.get("name") == "views":
+                    yield day.isoformat(), int(
+                        (series.get("total_value") or {}).get("value") or 0)
+            day += timedelta(days=1)
+
+    def _warn(self, msg: str) -> None:
+        if not hasattr(self, "api_warnings"):
+            self.api_warnings = set()
+        self.api_warnings.add(msg[:300])
 
     @staticmethod
     def _pivot(series_list, metric_map, grain, ref, date_from, date_to):

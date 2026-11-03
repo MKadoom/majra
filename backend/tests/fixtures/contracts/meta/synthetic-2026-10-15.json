@@ -11,7 +11,7 @@
    "request": {
     "method": "GET",
     "host": "graph.facebook.com",
-    "path": "/v21.0/me/adaccounts",
+    "path": "/v26.0/me/adaccounts",
     "params": {
      "fields": "name,currency,timezone_name"
     }
@@ -32,7 +32,7 @@
    "request": {
     "method": "GET",
     "host": "graph.facebook.com",
-    "path": "/v21.0/act_111/insights",
+    "path": "/v26.0/act_111/insights",
     "params": {
      "level": "ad"
     }
@@ -105,7 +105,7 @@
    "request": {
     "method": "GET",
     "host": "graph.facebook.com",
-    "path": "/v21.0/act_111/insights",
+    "path": "/v26.0/act_111/insights",
     "params": {
      "level": "account"
     }

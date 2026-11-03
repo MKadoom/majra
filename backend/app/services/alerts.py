@@ -43,7 +43,8 @@ TOKEN_WARN_DAYS = 14
 API_VERSION_WARN_DAYS = 90
 
 # Published sunset dates for API versions majra pins. Add the next one when a
-# connector is upgraded. Meta Graph v21.0 is retired 2027-01-21.
+# connector is upgraded. Meta Graph v21.0 is retired 2027-01-21 (majra moved to
+# v26.0 in T8; Meta hasn't published v26.0's sunset yet — add it when it does).
 API_SUNSETS: dict[str, dict[str, date]] = {
     "meta": {"v21.0": date(2027, 1, 21)},
 }
@@ -63,7 +64,7 @@ class AlertSettings(BaseSettings):
     alert_whatsapp_to: str = ""
     alert_whatsapp_template: str = ""
     alert_whatsapp_template_lang: str = "en"
-    alert_whatsapp_api_version: str = "v21.0"
+    alert_whatsapp_api_version: str = "v26.0"
     # Hour (UTC) the daily digest and token check run. 05:00 UTC = 08:00 Riyadh.
     alert_digest_hour_utc: int = 5
 

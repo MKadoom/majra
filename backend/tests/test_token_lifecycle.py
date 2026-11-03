@@ -20,7 +20,7 @@ from app.core.security import decrypt_tokens, encrypt_tokens
 from app.models import Connection, Schedule, SyncJob
 from app.services.sync import refresh_tokens_if_due, run_sync
 
-GRAPH = "https://graph.facebook.com/v21.0"
+GRAPH = "https://graph.facebook.com/v26.0"
 SNAP_TOKEN = "https://accounts.snapchat.com/login/oauth2/access_token"
 SNAP_API = "https://adsapi.snapchat.com/v1"
 

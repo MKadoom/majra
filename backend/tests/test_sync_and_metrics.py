@@ -22,7 +22,7 @@ from app.models import (
 from app.services.schedules import tick_schedules
 from app.services.sync import incremental_range, watermark
 
-GRAPH = "https://graph.facebook.com/v21.0"
+GRAPH = "https://graph.facebook.com/v26.0"
 
 
 def _insight(day: str, ad: str, spend: str, purchases: str = "1"):

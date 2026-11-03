@@ -21,7 +21,7 @@ class WhatsAppSettings(BaseSettings):
 
     whatsapp_token: str = ""
     # Graph API version to call.
-    whatsapp_api_version: str = "v21.0"
+    whatsapp_api_version: str = "v26.0"
     # Cost per *delivered* marketing message, in `whatsapp_price_currency`.
     whatsapp_price_per_delivered: float = 0.21
     # Currency the price (and therefore computed WhatsApp spend) is denominated in.

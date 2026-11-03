@@ -11,7 +11,7 @@
    "request": {
     "method": "GET",
     "host": "graph.facebook.com",
-    "path": "/v21.0/498954053303405",
+    "path": "/v26.0/498954053303405",
     "params": {
      "fields": "id,name,currency"
     }
@@ -27,7 +27,7 @@
    "request": {
     "method": "GET",
     "host": "graph.facebook.com",
-    "path": "/v21.0/498954053303405",
+    "path": "/v26.0/498954053303405",
     "params": {
      "fields": "analytics.start(1792011600).end(1792098000).granularity(HALF_HOUR)"
     }
@@ -58,7 +58,7 @@
    "request": {
     "method": "GET",
     "host": "graph.facebook.com",
-    "path": "/v21.0/498954053303405",
+    "path": "/v26.0/498954053303405",
     "params": {
      "fields": "pricing_analytics.start(1792011600).end(1792098000).granularity(HALF_HOUR).dimensions([\"PRICING_CATEGORY\",\"PRICING_TYPE\"])"
     }

@@ -21,7 +21,7 @@ from app.connectors.meta import mapping
 from app.core.config import settings
 from app.models import RawMetaInsights
 
-GRAPH_VERSION = "v21.0"
+GRAPH_VERSION = "v26.0"
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
 DIALOG = f"https://www.facebook.com/{GRAPH_VERSION}/dialog/oauth"
 
