@@ -2,7 +2,7 @@ import jwt as pyjwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -56,14 +56,30 @@ def get_current_user(
     return user
 
 
+def require_owner(user: User = Depends(get_current_user)) -> User:
+    """Instance-wide settings (FX rates) are the owner's alone."""
+    if not user.is_owner:
+        raise HTTPException(403, "owner only")
+    return user
+
+
 @router.post("/register", response_model=TokenPair, status_code=201)
 @limiter.limit(settings.rate_limit_auth)
 def register(request: Request, body: Credentials, db: Session = Depends(get_db)):
+    # Closed unless MAJRA_ALLOW_REGISTRATION=true. The one exception is an empty
+    # database, so a fresh install can create its first (owner) account.
+    first_user = not db.scalar(select(func.count()).select_from(User))
+    if not (first_user or settings.allow_registration):
+        raise HTTPException(403, "registration is closed")
     if db.scalar(select(User).where(User.email == body.email.lower())):
         raise HTTPException(409, "email already registered")
     if len(body.password) < 8:
         raise HTTPException(422, "password must be at least 8 characters")
-    user = User(email=body.email.lower(), password_hash=hash_password(body.password))
+    user = User(
+        email=body.email.lower(),
+        password_hash=hash_password(body.password),
+        is_owner=first_user,
+    )
     db.add(user)
     db.commit()
     return _pair(user)
@@ -97,4 +113,5 @@ def refresh(request: Request, body: RefreshBody, db: Session = Depends(get_db)):
 
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
-    return {"id": user.id, "email": user.email, "created_at": user.created_at}
+    return {"id": user.id, "email": user.email, "is_owner": user.is_owner,
+            "created_at": user.created_at}

@@ -196,7 +196,9 @@ The API deliberately has **no published port**. The dashboard reaches it over th
 internal Docker network; nothing else needs to.
 
 Prometheus scrapes **`/_metrics`** — not `/metrics`, which is the ad-performance
-query API. The metrics worth alerting on:
+query API. With `MAJRA_ENVIRONMENT=production` it returns 404 (as do `/docs`,
+`/redoc` and `/openapi.json`) unless `MAJRA_METRICS_IN_PRODUCTION=true`; the
+production compose sets that because its API has no published port. The metrics worth alerting on:
 
 | Metric | Meaning |
 |---|---|

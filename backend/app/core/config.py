@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     access_token_minutes: int = 15
     refresh_token_days: int = 30
+    # Public sign-up. OFF by default: majra is single-operator, and any account
+    # can read connection/account names. When off, /auth/register only accepts
+    # the very first account on an empty database (which becomes the owner).
+    allow_registration: bool = False
 
     # Token encryption at rest (Fernet). Generate:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -58,6 +62,10 @@ class Settings(BaseSettings):
     # Prometheus scrape endpoint. NOTE: it is /_metrics, not /metrics — /metrics
     # is the ad-performance query API.
     metrics_enabled: bool = True
+    # In production /_metrics 404s unless this is set. Only turn it on where the
+    # API is unreachable from the internet (the self-hosted compose, where
+    # Prometheus scrapes it over the internal network) — never on Railway.
+    metrics_in_production: bool = False
     # Send HSTS. Only turn this on when you're actually behind TLS.
     hsts_enabled: bool = False
 
@@ -68,6 +76,10 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "majra@localhost"
     smtp_starttls: bool = True
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
 
     @field_validator("database_url")
     @classmethod

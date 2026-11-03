@@ -29,6 +29,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(200))
+    # Owner = may change instance-wide settings (FX rates). The first account on
+    # an instance is the owner; later sign-ups are not.
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
