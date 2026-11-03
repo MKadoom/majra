@@ -316,6 +316,7 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
                         purchases=norm["purchases"],
                         messages_sent=norm.get("messages_sent", 0),
                         messages_delivered=norm.get("messages_delivered", 0),
+                        cost_source=norm.get("cost_source", "platform"),
                     )
                 )
                 fetched += 1

@@ -124,6 +124,12 @@ class FactAdPerformance(Base):
     # WhatsApp marketing messages (SPEC §5a): kept out of purchases/impressions.
     messages_sent: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     messages_delivered: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    # Where `spend` came from (T6): "platform" (the ad platform's own figure),
+    # "pricing_analytics" (WhatsApp cost from Meta), "estimate" (WhatsApp
+    # delivered × configured price), or "missing" (no cost could be determined).
+    cost_source: Mapped[str] = mapped_column(
+        String(30), default="platform", server_default="platform"
+    )
 
 
 class RawMetaInsights(Base):

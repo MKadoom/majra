@@ -231,7 +231,7 @@ when ungrouped). Derived metrics are null when their denominator is zero.
 **Metric definitions (cross-platform)**
 | field | meaning | per platform |
 |---|---|---|
-| `spend` | money paid to the platform | WhatsApp: until T6, an estimate (`cost_source = estimate`) |
+| `spend` | money paid to the platform; provenance in `cost_source` | WhatsApp (T6): Meta `pricing_analytics` cost per Riyadh day (`pricing_analytics`); if Meta returns none, delivered × `MAJRA_WHATSAPP_PRICE_PER_DELIVERED` (`estimate`), or 0 if that price isn't in the account's currency (`missing`). Ad platforms: `platform` |
 | `purchases` | completed purchases/donations the platform attributes | Meta `omni_purchase`, TikTok `complete_payment`, Snapchat `conversion_purchases`; Google 0 until segmented; **WhatsApp 0** |
 | `purchase_value` *(API name; stored in the `conversion_value` column, which the API also still returns as an alias for one release)* | value of those purchases | same sources |
 | `roas` | `purchase_value / spend` | null when spend = 0 |
@@ -248,6 +248,15 @@ when ungrouped). Derived metrics are null when their denominator is zero.
    Migration 0017 also moves existing WhatsApp-connector rows' `purchases` →
    `messages_sent` and `impressions` → `messages_delivered` (Meta accounts
    relabelled `whatsapp` via `platform_override` keep their real purchases).
+
+**Spend provenance (T6)** — `fact_ad_performance.cost_source`
+(`platform | pricing_analytics | estimate | missing`, migration 0018; pre-T6
+WhatsApp rows are marked `estimate` until re-synced). `/metrics` adds a
+`warnings[]` entry for every platform with `estimate`/`missing` days in range,
+and accepts `group_by=cost_source`. WhatsApp days are **Riyadh days** (UTC+3):
+messaging and pricing analytics are pulled at HALF_HOUR granularity over a
+window aligned to Riyadh midnight and summed per Riyadh date (DAILY — Meta's
+own day boundaries — only if HALF_HOUR is refused).
 
 **Acceptance**
 5. With production data, Oct 2–31 2026 Explore (default view) must show spend

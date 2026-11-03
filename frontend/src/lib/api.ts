@@ -158,7 +158,7 @@ export const DATASET_MEASURES: Record<Exclude<Dataset, "tags">, string[]> = {
 export const PRIMARY_MEASURES = 4;
 
 export const DATASET_GROUPS: Record<Exclude<Dataset, "tags">, string[]> = {
-  ads: ["platform", "date", "account", "campaign", "adset", "ad", "country", "device", "currency"],
+  ads: ["platform", "date", "account", "campaign", "adset", "ad", "country", "device", "currency", "cost_source"],
   web: ["date", "source", "medium", "campaign", "account"],
   social: ["date", "grain", "external_ref", "account"],
 };

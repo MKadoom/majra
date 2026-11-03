@@ -1,20 +1,25 @@
-"""WhatsApp Business Management connector — marketing-message analytics.
+"""WhatsApp Business Management connector — marketing-message analytics + cost.
 
-Not an ad platform: this reads the WhatsApp Business Management API's **messaging
-analytics** (`/{waba}?fields=analytics…`) — the same "Messages delivered" figure
-WhatsApp Manager shows — and maps it onto the ad_performance fact shape:
+Not an ad platform. Two WhatsApp Business Management API fields per WABA:
 
-    delivered  -> impressions   (the headline "reach" / messages delivered)
-    sent       -> purchases     (kept visible)
-    spend       = delivered * price_per_delivered  (WhatsApp bills marketing
-                                messages per delivered message, not as ad
-                                spend, so we price it — default 0.21 SAR —
-                                to show real cost instead of zero)
+- `analytics` (messaging analytics): messages **sent** / **delivered** — the
+  figures WhatsApp Manager shows → `messages_sent` / `messages_delivered`
+  (SPEC §5a: never purchases or impressions).
+- `pricing_analytics`: Meta's **cost** per period ("approximate charges for
+  messages delivered, in your Messaging account's currency") → `spend`, with
+  `cost_source = "pricing_analytics"` (T6).
 
-Account-level per day (per WhatsApp Business Account). Per-*template* analytics
-(`template_analytics`) was tried first but returns zeros for MM_LITE broadcast
-sends, so messaging analytics is the reliable source; the template *count* (each
-template ≈ a campaign) is still available via `message_templates`.
+Days are **Riyadh days** (UTC+3): both fields are requested at HALF_HOUR
+granularity over a window aligned to Riyadh midnight and summed per Riyadh date,
+so a day's figures don't straddle two calendar days. If Meta refuses HALF_HOUR
+for the range, DAILY is used instead (Meta's day boundaries; logged in the row).
+
+When pricing data is unavailable for a day (e.g. an account on a partner's
+credit line, which Meta documents as returning no cost), spend falls back to an
+estimate — delivered × MAJRA_WHATSAPP_PRICE_PER_DELIVERED — marked
+`cost_source = "estimate"`, but only if that price is in the account's
+currency; otherwise spend is 0 with `cost_source = "missing"`. /metrics warns
+about both, so an estimate is never mistaken for a bill.
 
 Auth is a single System User token (whatsapp_business_management) read from env
 (MAJRA_WHATSAPP_TOKEN); a connection stores which WABAs to pull in tokens.extra.
@@ -23,7 +28,7 @@ campaign, so the engine skips the entity walk.
 """
 import time
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
@@ -38,6 +43,17 @@ from app.connectors.base import (
 )
 from app.connectors.whatsapp.config import WhatsAppSettings
 
+# Saudi Arabia has no DST: a fixed offset is exact (and needs no tzdata).
+RIYADH = timezone(timedelta(hours=3), "Asia/Riyadh")
+
+
+def riyadh_midnight_ts(d: date) -> int:
+    return int(datetime(d.year, d.month, d.day, tzinfo=RIYADH).timestamp())
+
+
+def riyadh_day(ts: int | str) -> date:
+    return datetime.fromtimestamp(int(ts), tz=RIYADH).date()
+
 
 class WhatsAppConnector(BaseConnector):
     platform = "whatsapp"
@@ -49,6 +65,7 @@ class WhatsAppConnector(BaseConnector):
     def __init__(self) -> None:
         self._cfg = WhatsAppSettings()
         self._base = f"https://graph.facebook.com/{self._cfg.whatsapp_api_version}"
+        self._currency: dict[str, str] = {}  # waba -> account currency
 
     def _require_config(self) -> None:
         if not self._cfg.whatsapp_token:
@@ -88,12 +105,14 @@ class WhatsAppConnector(BaseConnector):
                 AccountInfo(
                     external_id=str(waba),
                     name=info.get("name") or f"WABA {waba}",
-                    # Spend is computed as delivered * price, denominated in the
-                    # pricing currency — so the fact row must carry that currency,
-                    # not whatever billing currency the WABA reports.
-                    currency=self._cfg.whatsapp_price_currency,
+                    # pricing_analytics cost is in the WABA's own currency, so
+                    # the fact rows carry that. Fall back to the price currency
+                    # only if Meta doesn't report one.
+                    currency=(info.get("currency")
+                              or self._cfg.whatsapp_price_currency).upper(),
                 )
             )
+            self._currency[str(waba)] = out[-1].currency
         return out
 
     def fetch_entities(
@@ -124,44 +143,85 @@ class WhatsAppConnector(BaseConnector):
         if breakdown != "none":
             raise PermanentError(f"whatsapp: breakdown '{breakdown}' not supported")
         self._require_config()
-        start = int(datetime(date_from.year, date_from.month, date_from.day, tzinfo=UTC).timestamp())
-        end = int(datetime(date_to.year, date_to.month, date_to.day, tzinfo=UTC).timestamp()) + 86400
-        field = f"analytics.start({start}).end({end}).granularity(DAY)"
-        data = self._get(f"{self._base}/{account_external_id}", {"fields": field})
-        analytics = data.get("analytics") or {}
-        for dp in analytics.get("data_points", []):
-            yield {
-                "waba": account_external_id,
-                "start": dp.get("start"),
-                "sent": dp.get("sent"),
-                "delivered": dp.get("delivered"),
-            }
+        start = riyadh_midnight_ts(date_from)
+        end = riyadh_midnight_ts(date_to + timedelta(days=1))
+        try:
+            msgs, cost, granularity = self._pull(account_external_id, start, end, "HALF_HOUR")
+        except PermanentError:
+            # Meta may not serve half-hour points for older ranges: use its days.
+            msgs, cost, granularity = self._pull(account_external_id, start, end, "DAILY")
+
+        day = date_from
+        while day <= date_to:
+            m = msgs.get(day, {})
+            c = cost.get(day)
+            if m or c is not None:
+                yield {
+                    "waba": account_external_id,
+                    "day": day.isoformat(),
+                    "sent": m.get("sent", 0),
+                    "delivered": m.get("delivered", 0),
+                    "cost": c,                       # None = Meta returned no cost
+                    "currency": self._currency.get(account_external_id),
+                    "granularity": granularity,
+                }
+            day += timedelta(days=1)
+
+    def _pull(self, waba: str, start: int, end: int, granularity: str):
+        """Sum messaging analytics and pricing analytics per Riyadh day."""
+        msg_gran = "HALF_HOUR" if granularity == "HALF_HOUR" else "DAY"
+        data = self._get(f"{self._base}/{waba}", {
+            "fields": f"analytics.start({start}).end({end}).granularity({msg_gran})"})
+        msgs: dict[date, dict] = {}
+        for dp in (data.get("analytics") or {}).get("data_points", []):
+            if dp.get("start") is None:
+                continue
+            d = msgs.setdefault(riyadh_day(dp["start"]), {"sent": 0, "delivered": 0})
+            d["sent"] += int(dp.get("sent") or 0)
+            d["delivered"] += int(dp.get("delivered") or 0)
+
+        pdata = self._get(f"{self._base}/{waba}", {
+            "fields": (f"pricing_analytics.start({start}).end({end})"
+                       f".granularity({granularity})"
+                       '.dimensions(["PRICING_CATEGORY","PRICING_TYPE"])')})
+        cost: dict[date, float] = {}
+        for block in (pdata.get("pricing_analytics") or {}).get("data", []):
+            for dp in block.get("data_points", []):
+                if dp.get("start") is None or dp.get("cost") is None:
+                    continue
+                d = riyadh_day(dp["start"])
+                cost[d] = cost.get(d, 0.0) + float(dp["cost"])
+        return msgs, cost, granularity
 
     # ---------------------------------------------------- normalization
     def normalize_entity(self, raw: dict, level: Level) -> dict:
         return {}  # unused
 
     def normalize_insight(self, raw: dict, breakdown: str) -> dict:
-        ts = raw.get("start")
-        day = (
-            datetime.fromtimestamp(int(ts), tz=UTC).date().isoformat()
-            if ts else ""
-        )
         delivered = int(raw.get("delivered") or 0)
-        # WhatsApp bills marketing messages per delivered message; the Graph API
-        # returns no cost, so price it ourselves (default 0.21 SAR / delivered).
-        spend = round(delivered * self._cfg.whatsapp_price_per_delivered, 4)
+        cost = raw.get("cost")
+        if cost is not None:
+            spend, source = round(float(cost), 4), "pricing_analytics"
+        elif (raw.get("currency") or self._cfg.whatsapp_price_currency).upper() \
+                == self._cfg.whatsapp_price_currency.upper():
+            # No cost from Meta for this day: estimate, clearly marked.
+            spend = round(delivered * self._cfg.whatsapp_price_per_delivered, 4)
+            source = "estimate"
+        else:
+            # The configured price is in another currency than the account's —
+            # an estimate would be in the wrong unit. Report nothing, say so.
+            spend, source = 0.0, "missing"
         return {
-            "date": day,
+            "date": raw.get("day") or "",
             "campaign_external_id": f"wa-messages-{raw.get('waba')}",
             "campaign_name": "WhatsApp Marketing Messages",
             "adset_external_id": None,
             "ad_external_id": None,
             "breakdown": breakdown,
             "country": None, "device": None, "age": None, "gender": None, "placement": None,
-            "spend": spend,                                  # delivered * price
-            # Messages are not ad impressions or purchases (SPEC §5a): they get
-            # their own fields so they can't inflate CPM or the purchase count.
+            "spend": spend,
+            "cost_source": source,
+            # Messages are not ad impressions or purchases (SPEC §5a).
             "impressions": 0,
             "clicks": 0,
             "conversions": 0.0,
