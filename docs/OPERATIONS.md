@@ -101,8 +101,11 @@ Platform tokens expire and get revoked. Meta's last roughly 60 days; Google
 refreshes silently but dies if the user revokes access in their Google account.
 
 **How you'll notice:** a gap in the channel strip on the Connections page, a
-failed job in **Sync jobs**, and — if you set `MAJRA_ALERT_WEBHOOK_URL` — a POST
-to your webhook.
+failed job in **Sync jobs**, and an alert (WhatsApp if the
+`MAJRA_ALERT_WHATSAPP_*` variables are set, and/or a POST to
+`MAJRA_ALERT_WEBHOOK_URL`). Tokens that carry an expiry date are also flagged
+14 days ahead, every morning, until they're reconnected. `GET /health` shows
+`alerts_configured` — if it's `false`, nothing is being sent.
 
 **The fix** is always the same: **Connections → Add connection →** pick the same
 platform and authorize again. The new tokens replace the old ones; historical

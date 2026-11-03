@@ -160,7 +160,12 @@ never mutated.
 - Job kinds: `manual | scheduled | backfill`. Retries (Celery): autoretry up to
   5× with exponential backoff on `TransientError`; `PermanentError` fails the job
   immediately with `error = "ClassName: message"`. On final failure the worker
-  POSTs a JSON alert to `MAJRA_ALERT_WEBHOOK_URL` if set.
+  raises a `sync.failed` alert (`app/services/alerts.py`: WhatsApp and/or the
+  `MAJRA_ALERT_WEBHOOK_URL` JSON POST). A successful job whose stats show
+  `accounts_skipped > 0` (ids in `accounts_skipped_ids`) or `api_warnings`
+  raises `accounts.skipped` / `api.version`. A daily beat task alerts on tokens
+  expiring within 14 days and pinned API versions within 90 days of sunset, and
+  sends a digest. `GET /health` reports `alerts_configured`.
 
 ## §5 GET /metrics contract (`app/services/metrics.py`)
 Params: `date_from`, `date_to` (required); `breakdown` (default `none`);
