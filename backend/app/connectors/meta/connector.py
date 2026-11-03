@@ -179,6 +179,26 @@ class MetaConnector(BaseConnector):
             f"{GRAPH}/{account_external_id}/insights", params, tokens
         )
 
+    def fetch_account_totals(self, tokens, account_external_id, date_from, date_to):
+        """Account-level daily totals straight from Meta (level=account), for
+        reconciliation. Purchases use the same action types as the sync."""
+        params = {
+            "level": "account",
+            "time_increment": 1,
+            "time_range": json.dumps(
+                {"since": date_from.isoformat(), "until": date_to.isoformat()}),
+            "fields": "date_start,spend,impressions,actions",
+            "limit": 500,
+        }
+        out: dict[str, dict] = {}
+        for r in self._paginate(f"{GRAPH}/{account_external_id}/insights", params, tokens):
+            out[r["date_start"]] = {
+                "spend": float(r.get("spend") or 0),
+                "impressions": int(r.get("impressions") or 0),
+                "purchases": int(mapping.action_total(r.get("actions"), mapping.PURCHASE)),
+            }
+        return out
+
     # ---------------------------------------------------- normalization
     def normalize_entity(self, raw: dict, level: Level) -> dict:
         return {

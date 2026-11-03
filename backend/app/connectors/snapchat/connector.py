@@ -142,26 +142,7 @@ class SnapchatConnector(BaseConnector):
             raise PermanentError(
                 f"snapchat: breakdown '{breakdown}' not supported (only 'none')"
             )
-        # Snapchat requires DAY-granularity timeseries start/end to be midnight
-        # in the ad account's own timezone (not UTC), or it 400s with
-        # "must have a start time that is the start of the day".
-        acct_resp = self._get(f"{API}/adaccounts/{account_external_id}", tokens)
-        _accts = acct_resp.get("adaccounts", [])
-        tz_name = (
-            _accts[0].get("adaccount", {}).get("timezone") if _accts else None
-        ) or "UTC"
-        try:
-            tz = ZoneInfo(tz_name)
-        except Exception:
-            tz = ZoneInfo("UTC")
-        # end_time is exclusive; add a day to include date_to.
-        end_date = date_to + timedelta(days=1)
-        start = datetime(
-            date_from.year, date_from.month, date_from.day, tzinfo=tz
-        ).isoformat()
-        end = datetime(
-            end_date.year, end_date.month, end_date.day, tzinfo=tz
-        ).isoformat()
+        start, end = self._day_window(tokens, account_external_id, date_from, date_to)
         data = self._get(
             f"{API}/adaccounts/{account_external_id}/stats",
             tokens,
@@ -184,6 +165,48 @@ class SnapchatConnector(BaseConnector):
                         "start_time": point.get("start_time"),
                         "stats": point.get("stats", {}),
                     }
+
+    def fetch_account_totals(self, tokens, account_external_id, date_from, date_to):
+        """Account-level daily stats (no ad breakdown), for reconciliation."""
+        start, end = self._day_window(tokens, account_external_id, date_from, date_to)
+        data = self._get(
+            f"{API}/adaccounts/{account_external_id}/stats", tokens,
+            params={"granularity": "DAY", "fields": STAT_FIELDS,
+                    "start_time": start, "end_time": end},
+        )
+        out: dict[str, dict] = {}
+        for ts in data.get("timeseries_stats", []):
+            for point in ts.get("timeseries_stat", {}).get("timeseries", []):
+                s = point.get("stats", {})
+                out[(point.get("start_time") or "")[:10]] = {
+                    "spend": float(s.get("spend") or 0) / 1_000_000,
+                    "impressions": int(s.get("impressions") or 0),
+                    "purchases": int(s.get("conversion_purchases") or 0),
+                }
+        return out
+
+    def _day_window(self, tokens, account_external_id, date_from, date_to):
+        # Snapchat requires DAY-granularity timeseries start/end to be midnight
+        # in the ad account's own timezone (not UTC), or it 400s with
+        # "must have a start time that is the start of the day".
+        acct_resp = self._get(f"{API}/adaccounts/{account_external_id}", tokens)
+        _accts = acct_resp.get("adaccounts", [])
+        tz_name = (
+            _accts[0].get("adaccount", {}).get("timezone") if _accts else None
+        ) or "UTC"
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("UTC")
+        # end_time is exclusive; add a day to include date_to.
+        end_date = date_to + timedelta(days=1)
+        start = datetime(
+            date_from.year, date_from.month, date_from.day, tzinfo=tz
+        ).isoformat()
+        end = datetime(
+            end_date.year, end_date.month, end_date.day, tzinfo=tz
+        ).isoformat()
+        return start, end
 
     # ---------------------------------------------------- normalization
     def normalize_entity(self, raw: dict, level: Level) -> dict:
