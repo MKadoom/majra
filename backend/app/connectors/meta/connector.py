@@ -1,5 +1,6 @@
 import json
 import random
+import re
 import time
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -23,6 +24,8 @@ from app.models import RawMetaInsights
 GRAPH_VERSION = "v21.0"
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
 DIALOG = f"https://www.facebook.com/{GRAPH_VERSION}/dialog/oauth"
+# Shape of a Graph API version ("v21.0"); anything else would end up in a URL.
+_VERSION_RE = re.compile(r"v\d+\.\d+")
 
 # Graph error codes that are safe to retry (rate limits / transient).
 TRANSIENT_CODES = {1, 2, 4, 17, 32, 341, 613}
@@ -59,6 +62,18 @@ class MetaConnector(BaseConnector):
     # build dims from insights alone and skip the /campaigns, /adsets, /ads walk.
     insights_carry_hierarchy = True
 
+    def __init__(self, graph_version: str | None = None) -> None:
+        # Defaults to the pinned GRAPH_VERSION, so the sync engine (which builds
+        # connectors with no arguments) is unchanged. Passing a version lets a
+        # caller such as `scripts.meta_parity` run this same fetch + normalize
+        # path against another Graph version without patching module globals.
+        version = graph_version or GRAPH_VERSION
+        if not _VERSION_RE.fullmatch(version):
+            raise ValueError(f"meta: invalid Graph API version {version!r}")
+        self.graph_version = version
+        self.graph = f"https://graph.facebook.com/{version}"
+        self.dialog = f"https://www.facebook.com/{version}/dialog/oauth"
+
     # ------------------------------------------------------------- auth
     def auth_url(self, state: str, redirect_uri: str) -> str:
         q = urlencode(
@@ -70,11 +85,11 @@ class MetaConnector(BaseConnector):
                 "response_type": "code",
             }
         )
-        return f"{DIALOG}?{q}"
+        return f"{self.dialog}?{q}"
 
     def exchange_code(self, code: str, redirect_uri: str) -> TokenSet:
         data = self._get(
-            f"{GRAPH}/oauth/access_token",
+            f"{self.graph}/oauth/access_token",
             {
                 "client_id": settings.meta_app_id,
                 "client_secret": settings.meta_app_secret,
@@ -96,7 +111,7 @@ class MetaConnector(BaseConnector):
 
     def _to_long_lived(self, short_token: str) -> TokenSet:
         data = self._get(
-            f"{GRAPH}/oauth/access_token",
+            f"{self.graph}/oauth/access_token",
             {
                 "grant_type": "fb_exchange_token",
                 "client_id": settings.meta_app_id,
@@ -114,7 +129,7 @@ class MetaConnector(BaseConnector):
     # -------------------------------------------------------- discovery
     def fetch_accounts(self, tokens: TokenSet) -> list[AccountInfo]:
         rows = self._paginate(
-            f"{GRAPH}/me/adaccounts",
+            f"{self.graph}/me/adaccounts",
             {"fields": "name,currency,timezone_name", "limit": 100},
             tokens,
         )
@@ -139,7 +154,7 @@ class MetaConnector(BaseConnector):
             "ad": "id,name,status,adset_id,campaign_id",
         }[level]
         yield from self._paginate(
-            f"{GRAPH}/{account_external_id}/{path}",
+            f"{self.graph}/{account_external_id}/{path}",
             {"fields": fields, "limit": 200},
             tokens,
         )
@@ -167,7 +182,7 @@ class MetaConnector(BaseConnector):
         if bd:
             params["breakdowns"] = bd
         yield from self._paginate(
-            f"{GRAPH}/{account_external_id}/insights", params, tokens
+            f"{self.graph}/{account_external_id}/insights", params, tokens
         )
 
     # ---------------------------------------------------- normalization
