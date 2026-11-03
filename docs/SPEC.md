@@ -23,6 +23,9 @@ own package.
         auth_url(state, redirect_uri) -> str
         exchange_code(code, redirect_uri) -> TokenSet
         refresh(tokens) -> TokenSet
+        needs_refresh(tokens, now=None) -> bool     # default: has a refresh
+                                                     # token and expires within
+                                                     # `refresh_ahead` (10 min)
         # discovery
         fetch_accounts(tokens) -> list[AccountInfo]
         # data — iterators that yield raw dicts, already paginated
@@ -34,8 +37,22 @@ own package.
         normalize_insight(raw, breakdown) -> dict
 
 `level` is one of `campaign | adset | ad`. Errors: raise `TransientError`
-(retryable: rate limit, 5xx, timeout) or `PermanentError` (auth revoked, invalid
-request). Nothing else escapes a connector. `get_connector(platform)` returns an
+(retryable: rate limit, 5xx, timeout), `AuthError` (a `PermanentError` subclass:
+the credential itself is expired, revoked or rejected — HTTP 401, Meta codes
+102/190, TikTok 40100/40105/40001, a token endpoint rejecting the grant), or
+`PermanentError` (anything else not retryable, e.g. no permission on one
+account). Nothing else escapes a connector.
+
+Token lifecycle: before each sync the engine calls `refresh()` when
+`needs_refresh()` says so and saves the result, Fernet-encrypted, on the
+connection (keeping the old refresh token / `extra` if the platform didn't return
+new ones). `AuthError` is never treated as a per-account skip: it fails the job
+and sets the connection to `needs_reauth`, and the scheduler stops enqueueing
+`needs_reauth` connections until they are reconnected. Reconnecting —
+`GET /connect/{platform}?connection_id=…` (OAuth) or
+`POST /connections/service-account` with `connection_id` — replaces that
+connection's tokens in place and resets it to `active`, keeping its id,
+schedules, account allow-list and history. `get_connector(platform)` returns an
 instance; unknown platform raises `PermanentError`.
 
 Breakdown sets a connector may support (`BREAKDOWN_SETS`): `none`, `country`,

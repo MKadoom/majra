@@ -19,6 +19,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -180,6 +181,8 @@ class GA4Connector(BaseConnector):
                 last = f"ga4: {resp.status_code}"
                 self._backoff(attempt)
                 continue
+            if resp.status_code == 401:
+                raise AuthError("ga4: 401 credentials rejected")
             raise PermanentError(f"ga4: {resp.status_code} {self._err(resp)}")
         raise TransientError(last)
 

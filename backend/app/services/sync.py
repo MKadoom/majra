@@ -18,7 +18,7 @@ from app.connectors.base import (
     get_connector,
 )
 from app.core.observability import SYNC_ROWS, SYNC_SECONDS, SYNCS
-from app.core.security import decrypt_tokens
+from app.core.security import decrypt_tokens, encrypt_tokens
 from app.models import (
     Account,
     Ad,
@@ -256,6 +256,10 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
                     )
                 )
                 fetched += 1
+        except AuthError:
+            # A dead token is not one bad account — every account will fail the
+            # same way. Fail the job so the connection is flagged needs_reauth.
+            raise
         except (TransientError, PermanentError, Exception) as exc:  # noqa: BLE001
             skipped.append(acc.external_id)
             _log(
@@ -463,6 +467,29 @@ def _handle_config_snapshot(db, conn, connector, job, accounts, tokens) -> dict:
 DATASET_HANDLERS["config_snapshot"] = _handle_config_snapshot
 
 
+def refresh_tokens_if_due(db: Session, conn, connector, tokens: TokenSet, job=None,
+                          now: datetime | None = None) -> TokenSet:
+    """Refresh the stored token before it expires and save it (encrypted) on
+    the connection, so a rotated refresh token is never lost. A refresh the
+    platform rejects raises AuthError, which fails the job and flags the
+    connection needs_reauth. Token values are never logged."""
+    if not connector.needs_refresh(tokens, now):
+        return tokens
+    fresh = connector.refresh(tokens)
+    merged = TokenSet(
+        access_token=fresh.access_token,
+        refresh_token=fresh.refresh_token or tokens.refresh_token,
+        expires_at=fresh.expires_at,
+        extra=fresh.extra or tokens.extra,
+    )
+    if merged.to_dict() != tokens.to_dict():
+        conn.encrypted_tokens = encrypt_tokens(merged.to_dict())
+        db.commit()
+        if job is not None:
+            _log(db, job, "token.refreshed", expires_at=merged.expires_at)
+    return merged
+
+
 def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     job = db.get(SyncJob, sync_job_id)
     if job is None:
@@ -476,6 +503,7 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     try:
         connector = get_connector(conn.platform)
         tokens = TokenSet.from_dict(decrypt_tokens(conn.encrypted_tokens))
+        tokens = refresh_tokens_if_due(db, conn, connector, tokens, job)
 
         accounts = _upsert_accounts(db, conn, connector.fetch_accounts(tokens))
         # Optional per-connection allow-list: sync only the chosen accounts. This

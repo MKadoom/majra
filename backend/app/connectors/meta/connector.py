@@ -15,6 +15,7 @@ from app.connectors.base import (
     PermanentError,
     TokenSet,
     TransientError,
+    token_expiry,
 )
 from app.connectors.meta import mapping
 from app.core.config import settings
@@ -83,6 +84,14 @@ class MetaConnector(BaseConnector):
             },
         )
         return self._to_long_lived(data["access_token"])
+
+    # A long-lived user token lasts ~60 days. Re-exchange it two weeks before
+    # it lapses (the exchange only works while the token is still valid).
+    refresh_ahead = timedelta(days=14)
+
+    def needs_refresh(self, tokens: TokenSet, now: datetime | None = None) -> bool:
+        exp = token_expiry(tokens)
+        return exp is not None and exp - (now or datetime.now(UTC)) <= self.refresh_ahead
 
     def refresh(self, tokens: TokenSet) -> TokenSet:
         """Meta user tokens have no silent refresh; a still-valid long-lived
@@ -240,7 +249,7 @@ class MetaConnector(BaseConnector):
                 return data
             code = err.get("code")
             msg = f"meta: [{code}] {err.get('message')}"
-            if code in AUTH_CODES or resp.status_code in (401, 403):
+            if code in AUTH_CODES or resp.status_code == 401:
                 raise AuthError(msg)
             if code in TRANSIENT_CODES or err.get("is_transient"):
                 last = msg

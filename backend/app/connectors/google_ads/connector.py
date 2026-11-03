@@ -17,6 +17,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -100,7 +101,7 @@ class GoogleAdsConnector(BaseConnector):
 
     def refresh(self, tokens: TokenSet) -> TokenSet:
         if not tokens.refresh_token:
-            raise PermanentError("google_ads: no refresh token — re-authenticate")
+            raise AuthError("google_ads: no refresh token — re-authenticate")
         data = self._token_endpoint(
             {
                 "refresh_token": tokens.refresh_token,
@@ -260,13 +261,12 @@ class GoogleAdsConnector(BaseConnector):
 
     # ------------------------------------------------------------- http
     def _token(self, tokens: TokenSet) -> str:
-        """Return a valid access token, refreshing from the refresh token once
-        per sync (stored expiry is usually stale, so we just refresh)."""
+        """Return a valid access token. The sync engine refreshes (and saves)
+        an expiring token before the sync starts, so this only refreshes when
+        called outside a sync with a token that's about to lapse."""
         if self._access is None:
-            if tokens.refresh_token:
-                self._access = self.refresh(tokens).access_token
-            else:
-                self._access = tokens.access_token
+            self._access = (self.refresh(tokens).access_token
+                            if self.needs_refresh(tokens) else tokens.access_token)
         return self._access
 
     def _headers(self, tokens: TokenSet, with_login_customer: bool) -> dict:
@@ -296,10 +296,13 @@ class GoogleAdsConnector(BaseConnector):
             resp = httpx.post(OAUTH_TOKEN, data=form, timeout=60)
         except httpx.HTTPError as exc:
             raise TransientError(f"google_ads: oauth network error {exc}") from exc
+        if resp.status_code >= 500:
+            raise TransientError(f"google_ads: oauth server {resp.status_code}")
         data = resp.json()
         if resp.status_code >= 400 or "error" in data:
+            # invalid_grant etc.: the refresh token is revoked/expired → reconnect
             detail = data.get("error_description") or data.get("error") or resp.status_code
-            raise PermanentError(f"google_ads: oauth failed — {detail}")
+            raise AuthError(f"google_ads: oauth failed — {detail}")
         return data
 
     def _request(
@@ -327,7 +330,9 @@ class GoogleAdsConnector(BaseConnector):
                 last = f"google_ads: {resp.status_code}"
                 self._backoff(attempt)
                 continue
-            # 4xx (auth revoked, bad query, dev-token/permission) -> permanent
+            if resp.status_code == 401:
+                raise AuthError(f"google_ads: 401 {self._err(resp)}")
+            # other 4xx (bad query, dev-token/permission) -> permanent
             raise PermanentError(f"google_ads: {resp.status_code} {self._err(resp)}")
         raise TransientError(last)
 

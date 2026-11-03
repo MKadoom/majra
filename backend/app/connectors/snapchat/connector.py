@@ -18,6 +18,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -74,7 +75,7 @@ class SnapchatConnector(BaseConnector):
 
     def refresh(self, tokens: TokenSet) -> TokenSet:
         if not tokens.refresh_token:
-            raise PermanentError("snapchat: no refresh token — re-authenticate")
+            raise AuthError("snapchat: no refresh token — re-authenticate")
         data = self._token_endpoint(
             {
                 "client_id": self._cfg.snap_client_id,
@@ -236,9 +237,11 @@ class SnapchatConnector(BaseConnector):
 
     # ------------------------------------------------------------- http
     def _token(self, tokens: TokenSet) -> str:
+        # The sync engine refreshes (and saves) the token before a sync, so use
+        # the stored one unless it's about to lapse.
         if self._access is None:
-            self._access = self.refresh(tokens).access_token if tokens.refresh_token \
-                else tokens.access_token
+            self._access = (self.refresh(tokens).access_token
+                            if self.needs_refresh(tokens) else tokens.access_token)
         return self._access
 
     def _get(self, url: str, tokens: TokenSet, params: dict | None = None) -> dict:
@@ -261,6 +264,8 @@ class SnapchatConnector(BaseConnector):
                 last = f"snapchat: {resp.status_code}"
                 self._backoff(attempt)
                 continue
+            if resp.status_code == 401:
+                raise AuthError(f"snapchat: 401 {resp.text[:200]}")
             raise PermanentError(f"snapchat: {resp.status_code} {resp.text[:200]}")
         raise TransientError(last)
 
@@ -279,10 +284,14 @@ class SnapchatConnector(BaseConnector):
             resp = httpx.post(TOKEN, data=form, timeout=60)
         except httpx.HTTPError as exc:
             raise TransientError(f"snapchat: oauth network error {exc}") from exc
+        if resp.status_code >= 500:
+            raise TransientError(f"snapchat: oauth server {resp.status_code}")
         data = resp.json()
         if resp.status_code >= 400 or "access_token" not in data:
+            # The token endpoint rejected the grant (revoked / expired refresh
+            # token): only a reconnect fixes that.
             detail = data.get("error_description") or data.get("error") or resp.status_code
-            raise PermanentError(f"snapchat: oauth failed — {detail}")
+            raise AuthError(f"snapchat: oauth failed — {detail}")
         return data
 
     @staticmethod

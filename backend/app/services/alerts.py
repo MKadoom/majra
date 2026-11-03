@@ -348,6 +348,14 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
     anomalies = anomaly_report(db, today=now.date())
     tokens = expiring_tokens(db, now=now)
     versions = api_version_notices(today=now.date())
+    reauth = [
+        {"connection_id": c.id, "platform": c.platform, "name": c.name}
+        for c in db.scalars(
+            select(Connection).where(
+                Connection.status == "needs_reauth", Connection.deleted_at.is_(None)
+            ).order_by(Connection.id)
+        )
+    ]
 
     lines = [f"last 24h to {now:%Y-%m-%d %H:%M} UTC"]
     if per_platform:
@@ -363,6 +371,9 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
     else:
         lines.append(f"spend {yesterday}: no rows")
     needs = []
+    if reauth:
+        needs.append(f"{len(reauth)} connection(s) need reconnecting ("
+                     + ", ".join(f"{r['platform']} · {r['name']}" for r in reauth) + ")")
     if stale:
         needs.append(f"{len(stale)} stale connection(s)")
     if over:
@@ -385,5 +396,6 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
                       for p, c, s in spend],
             "stale": stale, "over_budget": over, "anomalies": anomalies,
             "expiring_tokens": tokens, "api_versions": versions,
+            "needs_reauth": reauth,
         },
     )

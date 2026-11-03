@@ -29,6 +29,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -185,8 +186,18 @@ class WhatsAppConnector(BaseConnector):
                 last = f"whatsapp: {resp.status_code}"
                 self._backoff(attempt)
                 continue
+            if resp.status_code == 401 or self._is_token_error(resp):
+                raise AuthError(f"whatsapp: {resp.status_code} {self._err(resp)}")
             raise PermanentError(f"whatsapp: {resp.status_code} {self._err(resp)}")
         raise TransientError(last)
+
+    @staticmethod
+    def _is_token_error(resp: httpx.Response) -> bool:
+        """Graph error 190 (invalid/expired token) or 102 (session)."""
+        try:
+            return resp.json().get("error", {}).get("code") in (102, 190)
+        except Exception:  # noqa: BLE001
+            return False
 
     @staticmethod
     def _err(resp: httpx.Response) -> str:

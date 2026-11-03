@@ -42,6 +42,10 @@ def tick_schedules(db: Session, now: datetime | None = None) -> list[int]:
         conn = db.get(Connection, s.connection_id)
         if conn is None or conn.deleted_at is not None:
             continue  # soft-deleted (recycle bin): don't sync
+        if conn.status == "needs_reauth":
+            # Its token is dead: every job would fail the same way, burn rate
+            # budget and re-alert. Wait for the reconnect (which resets status).
+            continue
         dataset = get_connector(conn.platform).dataset if conn else "ad_performance"
         if dataset == "config_snapshot":
             # No date range for snapshots — one capture per due tick.

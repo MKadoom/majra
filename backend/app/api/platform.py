@@ -43,9 +43,18 @@ def platforms(user: User = Depends(get_current_user)):
 
 
 @router.get("/connect/{platform}")
-def connect(platform: str, user: User = Depends(get_current_user)):
+def connect(
+    platform: str,
+    connection_id: int | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Returns the provider consent URL. Open it in a browser; the callback
-    below stores the encrypted tokens and creates the connection."""
+    below stores the encrypted tokens and creates the connection.
+
+    Pass `connection_id` to **reconnect** an existing connection instead: the
+    callback then replaces that connection's tokens in place, so its id,
+    schedules, account allow-list and history are kept."""
     if platform not in CONNECTORS:
         raise HTTPException(404, f"unknown platform '{platform}'")
     connector = get_connector(platform)
@@ -54,7 +63,12 @@ def connect(platform: str, user: User = Depends(get_current_user)):
             400, f"'{platform}' uses {connector.auth_kind}; "
                  "use POST /connections/service-account"
         )
-    state = create_oauth_state(user.id, platform)
+    if connection_id is not None:
+        existing = db.get(Connection, connection_id)
+        if (existing is None or existing.user_id != user.id
+                or existing.platform != platform or existing.deleted_at is not None):
+            raise HTTPException(404, "connection not found")
+    state = create_oauth_state(user.id, platform, connection_id)
     try:
         auth_url = connector.auth_url(state, _redirect_uri(platform))
     except PermanentError as exc:
@@ -87,18 +101,32 @@ def callback(
     except PermanentError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    conn = Connection(
-        user_id=int(payload["sub"]),
-        platform=platform,
-        name=f"{platform} · {datetime.now(UTC):%Y-%m-%d %H:%M}",
-        encrypted_tokens=encrypt_tokens(tokens.to_dict()),
-    )
-    db.add(conn)
+    user_id = int(payload["sub"])
+    conn = None
+    if payload.get("connection_id") is not None:
+        conn = db.get(Connection, int(payload["connection_id"]))
+        if (conn is None or conn.user_id != user_id or conn.platform != platform
+                or conn.deleted_at is not None):
+            raise HTTPException(400, "the connection to reconnect no longer exists")
+    if conn is not None:
+        # Reconnect: same connection, schedules and history; fresh tokens.
+        conn.encrypted_tokens = encrypt_tokens(tokens.to_dict())
+        conn.status = "active"
+        verb = "reconnected"
+    else:
+        conn = Connection(
+            user_id=user_id,
+            platform=platform,
+            name=f"{platform} · {datetime.now(UTC):%Y-%m-%d %H:%M}",
+            encrypted_tokens=encrypt_tokens(tokens.to_dict()),
+        )
+        db.add(conn)
+        verb = "created"
     db.commit()
     return (
         "<html><body style='font-family:sans-serif'>"
         f"<h2>✓ {platform} connected</h2>"
-        f"<p>Connection #{conn.id} created. You can close this tab.</p>"
+        f"<p>Connection #{conn.id} {verb}. You can close this tab.</p>"
         "</body></html>"
     )
 
@@ -197,6 +225,9 @@ class ServiceAccountConnection(BaseModel):
     property_id: str | None = None  # GA4 property id; optional (GTM: account filter)
     waba_ids: list[str] | None = None  # WhatsApp Business Account IDs (whatsapp)
     name: str | None = None
+    # Replace this existing connection's credentials in place (keeps its id,
+    # schedules and history) instead of creating a new connection.
+    connection_id: int | None = None
 
 
 @router.post("/connections/service-account", status_code=201)
@@ -225,6 +256,19 @@ def create_service_account_connection(
         )
     except PermanentError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+    if body.connection_id is not None:
+        conn = db.get(Connection, body.connection_id)
+        if (conn is None or conn.user_id != user.id or conn.platform != body.platform
+                or conn.deleted_at is not None):
+            raise HTTPException(404, "connection not found")
+        conn.encrypted_tokens = encrypt_tokens(tokens.to_dict())
+        conn.status = "active"
+        if body.name:
+            conn.name = body.name
+        db.commit()
+        return {"id": conn.id, "platform": conn.platform, "name": conn.name,
+                "status": conn.status, "created_at": conn.created_at}
 
     label = body.name or (
         f"{body.platform} · property {body.property_id}" if body.property_id

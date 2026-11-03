@@ -39,9 +39,15 @@ def create_refresh_token(user_id: int) -> str:
     return _token(str(user_id), "refresh", timedelta(days=settings.refresh_token_days))
 
 
-def create_oauth_state(user_id: int, platform: str) -> str:
-    """CSRF-safe OAuth state carrying the initiating user (10 min TTL)."""
-    return _token(str(user_id), "oauth_state", timedelta(minutes=10), platform=platform)
+def create_oauth_state(
+    user_id: int, platform: str, connection_id: int | None = None
+) -> str:
+    """CSRF-safe OAuth state carrying the initiating user (10 min TTL), and —
+    for a reconnect — the connection whose tokens the callback should replace."""
+    extra = {"platform": platform}
+    if connection_id is not None:
+        extra["connection_id"] = connection_id
+    return _token(str(user_id), "oauth_state", timedelta(minutes=10), **extra)
 
 
 def create_connect_invite(user_id: int, platform: str, days: int) -> str:

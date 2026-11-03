@@ -20,6 +20,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -88,7 +89,7 @@ class MetaSocialConnector(BaseConnector):
         try:
             return self._to_long_lived(tokens.access_token)
         except (TransientError, PermanentError) as exc:
-            raise PermanentError("meta_social: token expired — re-authenticate") from exc
+            raise AuthError("meta_social: token expired — re-authenticate") from exc
 
     def _to_long_lived(self, short_token: str) -> TokenSet:
         data = self._get(
@@ -227,8 +228,8 @@ class MetaSocialConnector(BaseConnector):
                 return data
             code = err.get("code")
             msg = f"meta_social: [{code}] {err.get('message')}"
-            if code in AUTH_CODES or resp.status_code in (401, 403):
-                raise PermanentError(msg)
+            if code in AUTH_CODES or resp.status_code == 401:
+                raise AuthError(msg)
             if code in TRANSIENT_CODES or err.get("is_transient"):
                 last = msg
                 self._backoff(attempt)
