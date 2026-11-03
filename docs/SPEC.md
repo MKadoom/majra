@@ -206,14 +206,15 @@ Params: `date_from`, `date_to` (required); `breakdown` (default `none`);
 `platform[]`, `account_id[]`, `campaign_id[]`; `group_by[]` from
 `{platform, account, campaign, adset, ad, date, country, device}`; `sort`
 (prefix `-` for descending); `page`, `page_size` (max 1000).
+`currency` (default `SAR`, see §5a; unknown → 422); `group_by` also accepts
+`currency` (native, unconverted per-currency rows).
 Response: `{data: [{...group keys, spend, impressions, clicks, conversions,
-conversion_value, video_views, leads, purchases, ctr, cpc, cpm, cpa, roas}],
-page, page_size, total}`. `total` is the number of groups (1 when ungrouped).
-Derived metrics are null when their denominator is zero.
+purchase_value, conversion_value (alias), video_views, leads, purchases,
+messages_sent, messages_delivered, ctr, cpc, cpm, cpa, roas}], page,
+page_size, total, currency, warnings[]}`. `total` is the number of groups (1
+when ungrouped). Derived metrics are null when their denominator is zero.
 
-## §5a Metric semantics and currency (T5 — PROPOSED, awaiting owner approval)
-> Nothing in this section is implemented yet. It replaces the implicit rules
-> above once approved.
+## §5a Metric semantics and currency (T5 — approved 2026-11-03)
 
 **Reporting currency**
 1. Every monetary figure the API returns is in ONE currency, named in the
@@ -232,18 +233,21 @@ Derived metrics are null when their denominator is zero.
 |---|---|---|
 | `spend` | money paid to the platform | WhatsApp: until T6, an estimate (`cost_source = estimate`) |
 | `purchases` | completed purchases/donations the platform attributes | Meta `omni_purchase`, TikTok `complete_payment`, Snapchat `conversion_purchases`; Google 0 until segmented; **WhatsApp 0** |
-| `purchase_value` *(new; renamed from `conversion_value`)* | value of those purchases | same sources |
+| `purchase_value` *(API name; stored in the `conversion_value` column, which the API also still returns as an alias for one release)* | value of those purchases | same sources |
 | `roas` | `purchase_value / spend` | null when spend = 0 |
 | `conversions` | the platform's own optimisation-event count — **not comparable across platforms**, not used in ROAS or CPA | Meta purchases+leads, TikTok `conversion`, Snapchat purchases, Google all conversions |
 | `cpa` | `spend / purchases` (was spend / conversions) | |
 | `messages_sent`, `messages_delivered` *(new)* | WhatsApp marketing messages | WhatsApp only; its `impressions` become 0 so CPM isn't diluted |
 
 **Coverage**
-4. New `app.metric_coverage(platform, metric, valid_from)`. Where a request
-   reaches before `valid_from` (e.g. TikTok `purchases` before the purchase
-   field was pulled), the API returns `warnings[]` and the dashboard shows the
-   affected metric as partial. The exact TikTok date is read from the sync
-   history, not assumed.
+4. New `app.metric_coverage(platform, metric, valid_from, note)`. Where a
+   request reaches before `valid_from` (e.g. TikTok `purchases` before the
+   purchase field was pulled), the API returns a `warnings[]` entry and the
+   dashboard shows it. Migration 0017 seeds TikTok purchases with the first
+   date that has `purchases > 0` — read from the data, not assumed.
+   Migration 0017 also moves existing WhatsApp-connector rows' `purchases` →
+   `messages_sent` and `impressions` → `messages_delivered` (Meta accounts
+   relabelled `whatsapp` via `platform_override` keep their real purchases).
 
 **Acceptance**
 5. With production data, Oct 2–31 2026 Explore (default view) must show spend

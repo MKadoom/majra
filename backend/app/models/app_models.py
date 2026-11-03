@@ -124,6 +124,20 @@ class AccountSyncState(Base):
     )
 
 
+class MetricCoverage(Base):
+    """From which day a platform's metric is real (SPEC §5a). Before
+    `valid_from` the stored value is missing/zero for a reason that isn't
+    "nothing happened" (e.g. the field wasn't pulled yet), so /metrics warns."""
+
+    __tablename__ = "metric_coverage"
+    __table_args__ = {"schema": "app"}
+
+    platform: Mapped[str] = mapped_column(String(50), primary_key=True)
+    metric: Mapped[str] = mapped_column(String(50), primary_key=True)
+    valid_from: Mapped[object] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
     __table_args__ = {"schema": "app"}

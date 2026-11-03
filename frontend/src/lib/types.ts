@@ -156,6 +156,8 @@ export type MetricPage = {
   page: number;
   page_size: number;
   total: number;
+  currency?: string | null;
+  warnings?: string[];
 };
 
 export type GtmResource = {

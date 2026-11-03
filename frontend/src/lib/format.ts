@@ -1,7 +1,9 @@
 /** Metric formatting. Money keeps two decimals; counts get thin separators;
  *  ratios read as ratios. Everything renders in a tabular font (see .num). */
 
-const MONEY = new Set(["spend", "cpc", "cpm", "cpa", "conversion_value", "revenue"]);
+const MONEY = new Set([
+  "spend", "cpc", "cpm", "cpa", "conversion_value", "purchase_value", "revenue",
+]);
 const RATIO = new Set(["ctr", "roas"]);
 
 export function formatMeasure(key: string, value: unknown): string {
@@ -29,6 +31,10 @@ export const MEASURE_LABEL: Record<string, string> = {
   cpa: "CPA",
   conversions: "Conversions",
   conversion_value: "Value",
+  purchase_value: "Purchase value",
+  purchases: "Purchases",
+  messages_sent: "Messages sent",
+  messages_delivered: "Messages delivered",
   roas: "ROAS",
   sessions: "Sessions",
   users: "Users",

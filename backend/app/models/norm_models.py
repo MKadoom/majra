@@ -121,6 +121,9 @@ class FactAdPerformance(Base):
     video_views: Mapped[int] = mapped_column(BigInteger, default=0)
     leads: Mapped[int] = mapped_column(BigInteger, default=0)
     purchases: Mapped[int] = mapped_column(BigInteger, default=0)
+    # WhatsApp marketing messages (SPEC §5a): kept out of purchases/impressions.
+    messages_sent: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    messages_delivered: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
 
 
 class RawMetaInsights(Base):
