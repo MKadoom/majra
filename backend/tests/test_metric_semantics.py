@@ -135,3 +135,24 @@ def test_fx_refresh_keeps_the_sar_peg(db):
     rates = {r.currency: float(r.rate_to_usd) for r in db.query(FxRate)}
     assert rates["SAR"] == pytest.approx(1 / 3.75)
     assert rates["EUR"] == pytest.approx(1 / 0.9)
+
+
+def test_estimated_or_missing_spend_is_warned_and_groupable(db, setup):
+    wa = db.query(Account).filter_by(external_id="wa").one()
+    db.query(FactAdPerformance).filter_by(account_id=wa.id).update(
+        {"cost_source": "estimate"})
+    db.add(FactAdPerformance(
+        date=date(2026, 10, 11), platform="whatsapp", account_id=wa.id,
+        breakdown="none", spend=0, currency="SAR", impressions=0, clicks=0,
+        conversions=0, conversion_value=0, video_views=0, leads=0, purchases=0,
+        cost_source="missing"))
+    db.commit()
+    res = query_metrics(db, **P, user_id=setup)
+    assert any("whatsapp spend is estimated" in w and "1 day(s)" in w
+               for w in res["warnings"])
+    assert any("whatsapp spend is unknown on 1 day(s)" in w for w in res["warnings"])
+    by = {r["cost_source"]: r["spend"] for r in query_metrics(
+        db, **P, platforms=["whatsapp"], group_by=["cost_source"], user_id=setup)["data"]}
+    assert by == {"estimate": 21.0, "missing": 0.0}
+    clean = query_metrics(db, **P, platforms=["meta"], user_id=setup)
+    assert not any("estimated" in w for w in clean["warnings"])
