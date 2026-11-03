@@ -1,4 +1,5 @@
 from app.models.app_models import (
+    AccountSyncState,
     ApiKey,
     Budget,
     CardCharge,
@@ -30,7 +31,7 @@ from app.models.norm_models import (
 )
 
 __all__ = [
-    "User", "Connection", "Schedule", "SyncJob", "SyncLog",
+    "User", "Connection", "Schedule", "SyncJob", "SyncLog", "AccountSyncState",
     "ApiKey", "SavedReport", "FxRate", "Budget", "SavedView", "CardCharge",
     "Account", "Campaign", "Adset", "Ad",
     "FactAdPerformance", "FactWebPerformance", "FactSocialPerformance",
