@@ -174,7 +174,7 @@ function NewBudget({
   const { t } = useLocale();
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("SAR");
   const [accountId, setAccountId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +220,7 @@ function NewBudget({
         />
         <input
           className="field"
-          placeholder="USD"
+          placeholder="SAR"
           value={currency}
           onChange={(e) => setCurrency(e.target.value)}
         />

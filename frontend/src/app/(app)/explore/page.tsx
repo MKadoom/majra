@@ -87,7 +87,10 @@ export default function ExplorePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [compare, setCompare] = useState(false);
-  const [currency, setCurrency] = useState(""); // "" = raw per-currency
+  // SPEC §5a: money is always shown in one currency, SAR unless changed. For
+  // native per-currency totals, group by "currency" instead.
+  const [currency, setCurrency] = useState("SAR");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [fxCurrencies, setFxCurrencies] = useState<string[]>([]);
   const [views, setViews] = useState<SavedView[]>([]);
 
@@ -97,7 +100,7 @@ export default function ExplorePage() {
     api
       .get<{ currency: string }[]>("/fx-rates")
       .then((rs) => setFxCurrencies(currencyOptions(rs.map((r) => r.currency))))
-      .catch(() => setFxCurrencies(["USD"]));
+      .catch(() => setFxCurrencies(["SAR", "USD"]));
   }, []);
 
   const loadViews = useCallback(() => {
@@ -124,7 +127,7 @@ export default function ExplorePage() {
     setGroupBy(c.group_by ?? []);
     if (c.from) setFrom(c.from);
     if (c.to) setTo(c.to);
-    setCurrency(c.currency ?? "");
+    setCurrency(c.currency || "SAR");
   }
 
   const measures = dataset === "tags" ? [] : DATASET_MEASURES[dataset];
@@ -172,6 +175,7 @@ export default function ExplorePage() {
       ]);
 
       setTotals(totalsRes.data[0] ?? null);
+      setWarnings(totalsRes.warnings ?? []);
       setSeries(seriesRes.data);
       setTable(tableRes.data);
 
@@ -330,7 +334,6 @@ export default function ExplorePage() {
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
               >
-                <option value="">{t("explore.currencyRaw")}</option>
                 {fxCurrencies.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -388,6 +391,16 @@ export default function ExplorePage() {
       </div>
 
       {error && <ErrorNote message={error} />}
+      {dataset === "ads" && warnings.length > 0 && (
+        <ul
+          role="status"
+          className="mb-4 rounded-lg border border-warn/40 bg-warn/10 px-4 py-2 text-sm text-warn"
+        >
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
 
       {dataset === "tags" ? (
         <TagsView snapshot={tags} loading={loading} />

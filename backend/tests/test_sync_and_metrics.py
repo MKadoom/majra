@@ -432,21 +432,35 @@ def test_metrics_currency_normalization(auth_client, db, connection):
             "date_to": "2026-06-01", "breakdown": "none"}
     assert auth_client.post("/syncs", json=body).json()["status"] == "success"
 
-    # 1 SAR = 0.25 USD
+    # A manual SAR rate is ignored: the riyal is pegged at 3.75 per USD (SPEC §5a).
     assert auth_client.put(
         "/fx-rates", json={"currency": "SAR", "rate_to_usd": 0.25}
     ).status_code == 200
 
-    # raw (mixed currencies, not meaningful but unchanged): 10 + 10 = 20
-    raw = auth_client.get("/metrics", params={
+    # default = SAR, never a raw cross-currency sum: 10 SAR + 10 USD * 3.75 = 47.5
+    sar = auth_client.get("/metrics", params={
         "date_from": "2026-06-01", "date_to": "2026-06-01"}).json()
-    assert raw["data"][0]["spend"] == 20.0 and raw["currency"] is None
+    assert sar["currency"] == "SAR"
+    assert sar["data"][0]["spend"] == 47.5
+    assert sar["warnings"] == []
 
-    # blended into USD: 10 SAR -> 2.5 + 10 USD -> 10 = 12.5
+    # blended into USD: 10 SAR -> 2.6667 + 10 USD = 12.6667
     usd = auth_client.get("/metrics", params={
         "date_from": "2026-06-01", "date_to": "2026-06-01", "currency": "USD"}).json()
     assert usd["currency"] == "USD"
-    assert usd["data"][0]["spend"] == 12.5
+    assert round(usd["data"][0]["spend"], 4) == 12.6667
+
+    # the only unconverted view: one row per currency
+    per = auth_client.get("/metrics", params={
+        "date_from": "2026-06-01", "date_to": "2026-06-01",
+        "group_by": "currency"}).json()
+    assert per["currency"] is None
+    assert {r["currency"]: r["spend"] for r in per["data"]} == {"SAR": 10.0, "USD": 10.0}
+
+    # unknown reporting currency → 422, not a silent 1.0
+    assert auth_client.get("/metrics", params={
+        "date_from": "2026-06-01", "date_to": "2026-06-01",
+        "currency": "XYZ"}).status_code == 422
 
 
 def test_freshness_flags_stale_connection(db, connection):
@@ -515,14 +529,14 @@ def test_spend_anomaly_detection(db, connection):
     from app.services.anomalies import anomaly_report
 
     acc = Account(connection_id=connection.id, platform="meta",
-                  external_id="act_a", name="Acct A", currency="USD")
+                  external_id="act_a", name="Acct A", currency="SAR")
     db.add(acc)
     db.flush()
 
     def row(day, amt):
         return FactAdPerformance(
             date=day, platform="meta", account_id=acc.id, breakdown="none",
-            spend=amt, currency="USD", impressions=1, clicks=0, conversions=0,
+            spend=amt, currency="SAR", impressions=1, clicks=0, conversions=0,
             conversion_value=0, video_views=0, leads=0, purchases=0)
 
     for d in range(1, 7):           # steady 100/day, Jun 1–6
@@ -639,7 +653,7 @@ def test_metrics_scoped_per_user(db):
     def row(acc, amt):
         return FactAdPerformance(
             date=date(2026, 6, 1), platform="meta", account_id=acc.id,
-            breakdown="none", spend=amt, currency="USD", impressions=1, clicks=0,
+            breakdown="none", spend=amt, currency="SAR", impressions=1, clicks=0,
             conversions=0, conversion_value=0, video_views=0, leads=0, purchases=0)
 
     db.add_all([row(aa, 100), row(ab, 999)])
