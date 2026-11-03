@@ -38,7 +38,7 @@ jobs:
         working-directory: backend
         run: |
           pip install -r requirements.txt
-          pip install ruff pyarrow  # pyarrow: exercises the optional parquet export test
+          pip install ruff pyarrow pytest-cov  # pyarrow: exercises the optional parquet export test
 
       - name: Lint
         working-directory: backend
@@ -49,7 +49,8 @@ jobs:
         env:
           MAJRA_ENVIRONMENT: test
           MAJRA_DATABASE_URL: postgresql+psycopg://majra:majra@localhost:5432/majra_test
-        run: python -m pytest -q
+        # The worker is where failures become alerts; keep it covered (T2).
+        run: python -m pytest -q --cov=app.workers.tasks --cov-report=term --cov-fail-under=80
 
       - name: Migrations must be reversible
         working-directory: backend

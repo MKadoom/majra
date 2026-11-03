@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.db import engine
 from app.core.limiter import limiter
 from app.core.observability import BUILD, PrometheusMiddleware, metrics_response
+from app.services import alerts
 
 VERSION = "1.0.0"
 
@@ -122,6 +123,10 @@ def health():
         "environment": settings.environment,
         "db": db_ok,
         "redis": redis_ok,
+        # Whether any alert channel (WhatsApp / webhook) is set. Names only —
+        # never the credentials.
+        "alerts_configured": alerts.alerts_configured(),
+        "alert_channels": alerts.configured_channels(),
     }
 
 

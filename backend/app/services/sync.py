@@ -299,6 +299,7 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
     return {
         "accounts": len(synced_acc_ids),
         "accounts_skipped": len(skipped),
+        "accounts_skipped_ids": skipped,
         "rows_fetched": total_rows,
         "rows_deleted": deleted,
         "rows_inserted": len(facts),
@@ -490,6 +491,13 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
         if handler is None:
             raise PermanentError(f"no sync handler for dataset '{connector.dataset}'")
         stats = handler(db, conn, connector, job, accounts, tokens)
+        # Deprecation warnings the platform sent back in response headers
+        # (connectors that track them expose `api_warnings`). Kept on the job so
+        # the worker can alert on them.
+        warnings = sorted(getattr(connector, "api_warnings", None) or [])
+        if warnings:
+            stats = {**stats, "api_warnings": warnings}
+            _log(db, job, "api.version_warning", level="warning", warnings=warnings)
 
         job.status = "success"
         job.stats = stats

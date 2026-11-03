@@ -233,6 +233,7 @@ class MetaConnector(BaseConnector):
                 last = f"meta: server {resp.status_code}"
                 self._backoff(attempt)
                 continue
+            self._note_version_warning(resp)
             data = resp.json()
             err = data.get("error")
             if not err:
@@ -247,6 +248,17 @@ class MetaConnector(BaseConnector):
                 continue
             raise PermanentError(msg)
         raise TransientError(last)
+
+    def _note_version_warning(self, resp: httpx.Response) -> None:
+        """Meta flags a soon-to-be-retired API version in a response header
+        (e.g. ``x-ad-api-version-warning``). Collect any such header so the sync
+        can raise an `api.version` alert. Header names vary, so match loosely."""
+        for name, value in resp.headers.items():
+            n = name.lower()
+            if "version-warning" in n or "deprecat" in n:
+                if not hasattr(self, "api_warnings"):
+                    self.api_warnings = set()
+                self.api_warnings.add(f"{n}: {value}"[:300])
 
     def _paginate(self, url: str, params: dict, tokens: TokenSet) -> Iterator[dict]:
         data = self._get(url, params, tokens)

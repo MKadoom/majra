@@ -1,12 +1,14 @@
 import logging
 
-import httpx
 import structlog
 from celery import Celery, Task
+from celery.schedules import crontab
 
 from app.connectors.base import TransientError
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.models import Connection
+from app.services import alerts
 from app.services.anomalies import anomaly_report
 from app.services.freshness import stale_connections
 from app.services.fx import refresh_fx_rates
@@ -51,6 +53,16 @@ celery_app.conf.update(
             "task": "app.workers.tasks.check_anomalies_task",
             "schedule": 86400.0,
         },
+        # Token expiry + API sunset check, then the morning digest. Fixed hour
+        # (default 05:00 UTC = 08:00 Riyadh) so they land when the operator looks.
+        "check-tokens": {
+            "task": "app.workers.tasks.check_tokens_task",
+            "schedule": crontab(minute=0, hour=alerts.alert_settings.alert_digest_hour_utc),
+        },
+        "daily-digest": {
+            "task": "app.workers.tasks.daily_digest_task",
+            "schedule": crontab(minute=5, hour=alerts.alert_settings.alert_digest_hour_utc),
+        },
         # Refresh exchange rates weekly from the public provider.
         "refresh-fx": {
             "task": "app.workers.tasks.refresh_fx_task",
@@ -61,26 +73,27 @@ celery_app.conf.update(
 )
 
 
-def _alert(sync_job_id: int, message: str) -> None:
-    if not settings.alert_webhook_url:
+def _send(alert) -> None:
+    """Deliver an alert; never let a channel problem break a task."""
+    if alert is None:
         return
     try:
-        httpx.post(
-            settings.alert_webhook_url,
-            json={"event": "sync.failed", "sync_job_id": sync_job_id, "error": message},
-            timeout=10,
-        )
-    except httpx.HTTPError:
-        log.warning("alert.webhook_failed", sync_job_id=sync_job_id)
+        alerts.send(alert)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("alert.send_failed", kind=alert.kind, error=type(exc).__name__)
 
 
 class SyncTask(Task):
-    """Fires the alert webhook once, on FINAL failure (after retries)."""
+    """Alerts once, on FINAL failure (after retries)."""
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         sync_job_id = args[0] if args else kwargs.get("sync_job_id")
         log.error("sync.failed_final", sync_job_id=sync_job_id, error=str(exc))
-        _alert(sync_job_id, str(exc))
+        db = SessionLocal()
+        try:
+            _send(alerts.sync_failed(db, sync_job_id, str(exc)))
+        finally:
+            db.close()
 
 
 @celery_app.task(
@@ -95,7 +108,17 @@ class SyncTask(Task):
 def run_sync_task(self, sync_job_id: int) -> None:
     db = SessionLocal()
     try:
-        run_sync(db, sync_job_id)
+        job = run_sync(db, sync_job_id)
+        # A "successful" sync can still have skipped accounts or carry an API
+        # deprecation warning — both need a human, so alert on them.
+        _send(alerts.accounts_skipped(db, job))
+        warnings = (job.stats or {}).get("api_warnings") or []
+        if warnings:
+            platform = db.get(Connection, job.connection_id).platform
+            _send(alerts.api_version_alert(
+                [{"platform": platform, "version": "current", "warning": w}
+                 for w in warnings]
+            ))
     finally:
         db.close()
 
@@ -121,19 +144,6 @@ def run_reports_task() -> int:
         db.close()
 
 
-def _freshness_alert(stale: list[dict]) -> None:
-    if not settings.alert_webhook_url or not stale:
-        return
-    try:
-        httpx.post(
-            settings.alert_webhook_url,
-            json={"event": "data.stale", "connections": stale},
-            timeout=10,
-        )
-    except httpx.HTTPError:
-        log.warning("alert.webhook_failed", event="data.stale")
-
-
 @celery_app.task
 def check_freshness_task() -> int:
     db = SessionLocal()
@@ -142,23 +152,15 @@ def check_freshness_task() -> int:
         if stale:
             log.warning("data.stale", count=len(stale),
                         connections=[s["connection_id"] for s in stale])
-            _freshness_alert(stale)
+            _send(alerts.Alert(
+                kind="data.stale", title="data stopped arriving",
+                lines=[f"{s['platform']} · {s['name']}: last day {s['last_date']} "
+                       f"({s['days_stale']} day(s) behind)" for s in stale],
+                payload={"connections": stale},
+            ))
         return len(stale)
     finally:
         db.close()
-
-
-def _budget_alert(over: list[dict]) -> None:
-    if not settings.alert_webhook_url or not over:
-        return
-    try:
-        httpx.post(
-            settings.alert_webhook_url,
-            json={"event": "budget.over", "budgets": over},
-            timeout=10,
-        )
-    except httpx.HTTPError:
-        log.warning("alert.webhook_failed", event="budget.over")
 
 
 @celery_app.task
@@ -169,23 +171,16 @@ def check_budgets_task() -> int:
         if over:
             log.warning("budget.over", count=len(over),
                         budgets=[b["budget_id"] for b in over])
-            _budget_alert(over)
+            _send(alerts.Alert(
+                kind="budget.over", title="budget projected to overspend",
+                lines=[f"{b['name']}: {b['spent_mtd']:,.2f} spent, projected "
+                       f"{b['projected_month_end']:,.2f} of {b['amount_monthly']:,.2f} "
+                       f"{b['currency']}" for b in over],
+                payload={"budgets": over},
+            ))
         return len(over)
     finally:
         db.close()
-
-
-def _anomaly_alert(anomalies: list[dict]) -> None:
-    if not settings.alert_webhook_url or not anomalies:
-        return
-    try:
-        httpx.post(
-            settings.alert_webhook_url,
-            json={"event": "spend.anomaly", "anomalies": anomalies},
-            timeout=10,
-        )
-    except httpx.HTTPError:
-        log.warning("alert.webhook_failed", event="spend.anomaly")
 
 
 @celery_app.task
@@ -196,8 +191,40 @@ def check_anomalies_task() -> int:
         if found:
             log.warning("spend.anomaly", count=len(found),
                         accounts=[a["account"] for a in found])
-            _anomaly_alert(found)
+            _send(alerts.Alert(
+                kind="spend.anomaly", title="spend anomaly",
+                lines=[f"{a['account']} {a['date']}: {a['direction']} "
+                       f"{a['latest_spend']:,.2f} vs avg {a['avg_spend']:,.2f}"
+                       for a in found],
+                payload={"anomalies": found},
+            ))
         return len(found)
+    finally:
+        db.close()
+
+
+@celery_app.task
+def check_tokens_task() -> int:
+    """Daily: alert on tokens expiring within 14 days and on pinned API
+    versions near their published sunset."""
+    db = SessionLocal()
+    try:
+        expiring = alerts.expiring_tokens(db)
+        _send(alerts.token_expiring(expiring))
+        versions = alerts.api_version_notices()
+        _send(alerts.api_version_alert(versions))
+        return len(expiring) + len(versions)
+    finally:
+        db.close()
+
+
+@celery_app.task
+def daily_digest_task() -> bool:
+    db = SessionLocal()
+    try:
+        digest = alerts.daily_digest(db)
+        _send(digest)
+        return True
     finally:
         db.close()
 
