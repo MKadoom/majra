@@ -206,7 +206,7 @@ class MetaConnector(BaseConnector):
             "limit": 500,
         }
         out: dict[str, dict] = {}
-        for r in self._paginate(f"{GRAPH}/{account_external_id}/insights", params, tokens):
+        for r in self._paginate(f"{self.graph}/{account_external_id}/insights", params, tokens):
             out[r["date_start"]] = {
                 "spend": float(r.get("spend") or 0),
                 "impressions": int(r.get("impressions") or 0),
