@@ -101,11 +101,13 @@ def _write_counts(db):
 
 # ------------------------------------------------------------- version override
 def test_default_version_is_the_pinned_constant():
+    # Version-agnostic: T8 (#16) moves the pin from v21.0 to v26.0, and this
+    # must hold whichever of the two PRs lands first.
     c = MetaConnector()
-    assert c.graph_version == GRAPH_VERSION == "v21.0"
-    assert c.graph == "https://graph.facebook.com/v21.0"
+    assert c.graph_version == GRAPH_VERSION
+    assert c.graph == f"https://graph.facebook.com/{GRAPH_VERSION}"
     assert c.auth_url("s", "http://cb").startswith(
-        "https://www.facebook.com/v21.0/dialog/oauth?")
+        f"https://www.facebook.com/{GRAPH_VERSION}/dialog/oauth?")
 
 
 def test_version_override_changes_every_url():
