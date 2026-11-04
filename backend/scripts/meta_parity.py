@@ -53,14 +53,16 @@ REFERENCE = {
 }
 
 MONEY = ("spend", "conversion_value")
+# `conversions` is not listed: the connector sets it to purchases + leads, so
+# showing it beside purchases would read the same purchase actions twice.
 METRICS = (
-    "spend", "purchases", "conversions", "conversion_value",
+    "spend", "purchases", "leads", "conversion_value",
     "impressions", "clicks", "rows",
 )
 LABELS = {
     "spend": "spend",
     "purchases": "purchases",
-    "conversions": "conversions",
+    "leads": "leads",
     "conversion_value": "purchase value",
     "impressions": "impressions",
     "clicks": "clicks",
@@ -470,7 +472,7 @@ def _check(info: ConnectionInfo, month: str, versions: list[str], date_from: dat
     say("Connector path vs account-level, per version (informational):")
     for v in versions:
         parts = []
-        for m in ("spend", "purchases", "conversion_value", "impressions", "clicks"):
+        for m in ("spend", "purchases", "leads", "conversion_value", "impressions", "clicks"):
             d = _q(m, conn_results[v].metrics[m]) - _q(m, acct_results[v].metrics[m])
             parts.append(f"{LABELS[m]} {_fmt_diff(m, d)}")
         say(f"  {v}: " + ", ".join(parts))

@@ -178,6 +178,19 @@ def test_compare_ignores_sub_cent_float_noise_but_not_counts():
     assert not rows["clicks"].ok and rows["clicks"].diffs == [0, 1]
 
 
+def test_purchases_are_read_once_and_leads_shown_separately():
+    # conversions = purchases + leads in the connector; the check shows the two
+    # parts, not their sum, so purchase actions aren't reported twice.
+    assert "conversions" not in mp.METRICS
+    assert "leads" in mp.METRICS
+    with_lead = copy.deepcopy(AD_ROWS)
+    with_lead[0]["actions"].append({"action_type": "lead", "value": "4"})
+    rows = {r.metric: r for r in mp.compare({"v21.0": _totals(AD_ROWS),
+                                             "v26.0": _totals(with_lead)})}
+    assert rows["purchases"].ok and rows["purchases"].values == [5, 5]
+    assert not rows["leads"].ok and rows["leads"].values == [0, 4]
+
+
 def test_row_count_difference_fails():
     rows = {r.metric: r for r in mp.compare({"v21.0": _totals(AD_ROWS),
                                              "v26.0": _totals(AD_ROWS[:2])})}
