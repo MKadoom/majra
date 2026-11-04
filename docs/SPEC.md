@@ -275,10 +275,14 @@ own day boundaries — only if HALF_HOUR is refused).
 ## §5c Meta Graph API version (T8)
 All Meta surfaces — ads (`meta`), Pages/Instagram (`meta_social`), WhatsApp
 analytics and the WhatsApp alert sender — call **Graph v26.0** (v21.0 is
-retired 2027-01-21). `python -m scripts.meta_parity --connection-id N` checks,
-read-only, that February 2026 account-level totals are identical on v21.0 and
-v26.0 and equal the reference 86,914.24 spend / 1,629 purchases / 177,721.76
-purchase value.
+retired 2027-01-21). `python -m scripts.meta_parity --connection-id N
+[--month 2026-02] [--versions v21.0,v26.0]` (#17) checks, read-only, that a
+closed month's totals are identical across versions, both through the
+connector's own fetch + normalize path and an account-level cross-check, and
+reports renamed or missing fields and action types. Exit 0 = parity, 1 = drift,
+2 = could not run. The February 2026 reference (86,914.24 spend / 1,629
+purchases / 177,721.76 purchase value) is printed for information. Run on
+connection 12 on 2026-11-04: PASS on every metric.
 
 ## §5b Reconciliation and contract fixtures (T7)
 - `BaseConnector.fetch_account_totals(tokens, account, date_from, date_to)` —
