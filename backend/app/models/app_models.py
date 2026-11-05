@@ -99,6 +99,64 @@ class SyncJob(Base):
     connection: Mapped["Connection"] = relationship()
 
 
+class AccountSyncState(Base):
+    """Per-account sync coverage: the contiguous date range this account has been
+    synced through successfully, per breakdown. Unlike the fact-derived
+    watermark, it advances even when an account legitimately had no activity,
+    and it doesn't advance for an account that was skipped — so one healthy
+    account can't hide another account's gap. `backfill_completed_at` is stamped
+    once coverage reaches back to the schedule's backfill horizon."""
+
+    __tablename__ = "account_sync_state"
+    __table_args__ = {"schema": "app"}
+
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("norm.accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    breakdown: Mapped[str] = mapped_column(String(30), primary_key=True)
+    synced_from: Mapped[object] = mapped_column(Date)
+    synced_to: Mapped[object] = mapped_column(Date)
+    backfill_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class MetricCoverage(Base):
+    """From which day a platform's metric is real (SPEC §5a). Before
+    `valid_from` the stored value is missing/zero for a reason that isn't
+    "nothing happened" (e.g. the field wasn't pulled yet), so /metrics warns."""
+
+    __tablename__ = "metric_coverage"
+    __table_args__ = {"schema": "app"}
+
+    platform: Mapped[str] = mapped_column(String(50), primary_key=True)
+    metric: Mapped[str] = mapped_column(String(50), primary_key=True)
+    valid_from: Mapped[object] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ReconciliationResult(Base):
+    """One daily check (T7): a platform's own account-level total for a day
+    vs. the sum of what majra stored for that account and day."""
+
+    __tablename__ = "reconciliation_results"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("app.connections.id"), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("norm.accounts.id", ondelete="CASCADE"))
+    date: Mapped[object] = mapped_column(Date)
+    metric: Mapped[str] = mapped_column(String(30))
+    platform_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    stored_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    status: Mapped[str] = mapped_column(String(20))  # ok | mismatch | error
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
     __table_args__ = {"schema": "app"}

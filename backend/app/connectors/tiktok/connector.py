@@ -17,6 +17,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -249,7 +250,7 @@ class TikTokConnector(BaseConnector):
         msg = f"tiktok: [{code}] {body.get('message')}"
         # 40100/40105 auth; 50002 rate limit; 5xxxx server
         if code in (40100, 40105, 40001) or resp.status_code in (401, 403):
-            raise PermanentError(msg)
+            raise AuthError(msg)
         if code == 50002 or resp.status_code == 429 or resp.status_code >= 500:
             raise TransientError(msg)
         raise PermanentError(msg)

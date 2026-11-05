@@ -26,16 +26,16 @@ def _series(name, day_values):
 PAGE_INSIGHTS = {"data": [
     _series("page_impressions", [("2026-06-02T07:00:00+0000", 1000),
                                  ("2026-06-03T07:00:00+0000", 1200)]),
-    _series("page_impressions_unique", [("2026-06-02T07:00:00+0000", 800),
+    _series("page_total_media_view_unique", [("2026-06-02T07:00:00+0000", 800),
                                         ("2026-06-03T07:00:00+0000", 900)]),
     _series("page_post_engagements", [("2026-06-02T07:00:00+0000", 50),
                                       ("2026-06-03T07:00:00+0000", 60)]),
     _series("page_fans", [("2026-06-02T07:00:00+0000", 5000),
                           ("2026-06-03T07:00:00+0000", 5010)]),
 ]}
+# IG `impressions` is retired; `views` comes per day as a total_value.
+IG_VIEWS = {1780272000: 500, 1780358400: 600}   # 2026-06-01, 2026-06-02 00:00 UTC
 IG_INSIGHTS = {"data": [
-    _series("impressions", [("2026-06-02T07:00:00+0000", 500),
-                            ("2026-06-03T07:00:00+0000", 600)]),
     _series("reach", [("2026-06-02T07:00:00+0000", 400),
                       ("2026-06-03T07:00:00+0000", 450)]),
     _series("follower_count", [("2026-06-02T07:00:00+0000", 2000),
@@ -69,8 +69,15 @@ def _mock_social():
                   "instagram_business_account": {"id": "ig1"}}]}))
     respx.get(f"{GRAPH}/page1/insights").mock(
         return_value=httpx.Response(200, json=PAGE_INSIGHTS))
-    respx.get(f"{GRAPH}/ig1/insights").mock(
-        return_value=httpx.Response(200, json=IG_INSIGHTS))
+    def ig(request):
+        if request.url.params.get("metric") == "views":
+            assert request.url.params.get("metric_type") == "total_value"
+            v = IG_VIEWS.get(int(request.url.params["since"]), 0)
+            return httpx.Response(200, json={"data": [
+                {"name": "views", "period": "day", "total_value": {"value": v}}]})
+        return httpx.Response(200, json=IG_INSIGHTS)
+
+    respx.get(f"{GRAPH}/ig1/insights").mock(side_effect=ig)
 
 
 @pytest.fixture
@@ -136,3 +143,44 @@ def test_social_watermark_is_dataset_aware(auth_client, db, social_connection):
         "date_to": "2026-06-02", "breakdown": "none"})
     # reads fact_social_performance, not the ad table
     assert watermark(db, social_connection.id, "none") == date(2026, 6, 2)
+
+
+def test_metrics_are_the_supported_replacements():
+    from app.connectors.meta_social.connector import IG_METRICS
+
+    assert "page_impressions_unique" not in PAGE_METRICS          # retired in v26
+    assert PAGE_METRICS["page_total_media_view_unique"] == "reach"
+    assert "impressions" not in IG_METRICS                        # retired 2025-04-21
+
+
+@respx.mock
+def test_a_rejected_metric_does_not_sink_the_others():
+    """If Meta retires another metric, the batch call fails; the connector then
+    asks per metric, keeps the rest, and raises an API-version warning."""
+    def page(request):
+        metric = request.url.params.get("metric")
+        if "," in metric or metric == "page_fans":
+            return httpx.Response(400, json={"error": {
+                "code": 100, "message": "(#100) The value must be a valid insights metric"}})
+        return httpx.Response(200, json={"data": [
+            s for s in PAGE_INSIGHTS["data"] if s["name"] == metric]})
+
+    respx.get(f"{GRAPH}/page1/insights").mock(side_effect=page)
+    c = MetaSocialConnector()
+    from app.connectors.base import TokenSet
+    rows = list(c.fetch_insights(TokenSet("t"), "page1", date(2026, 6, 1),
+                                 date(2026, 6, 1), "none"))
+    assert rows[0]["impressions"] == 1000 and rows[0]["reach"] == 800
+    assert "followers" not in rows[0]
+    assert any("page_fans" in w for w in c.api_warnings)
+
+
+@respx.mock
+def test_dead_token_still_fails_the_sync():
+    from app.connectors.base import AuthError, TokenSet
+
+    respx.get(f"{GRAPH}/page1/insights").mock(return_value=httpx.Response(
+        400, json={"error": {"code": 190, "message": "Session has expired"}}))
+    with pytest.raises(AuthError):
+        list(MetaSocialConnector().fetch_insights(
+            TokenSet("t"), "page1", date(2026, 6, 1), date(2026, 6, 1), "none"))

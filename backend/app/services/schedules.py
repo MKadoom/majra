@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.connectors.base import get_connector
 from app.models import Connection, Schedule, SyncJob
-from app.services.sync import backfill_chunks, incremental_range
+from app.services.sync import (
+    backfill_chunks,
+    incremental_range,
+    mark_backfills_complete,
+    split_range,
+)
 
 CADENCE_DELTA = {
     "hourly": timedelta(hours=1),
@@ -42,6 +47,10 @@ def tick_schedules(db: Session, now: datetime | None = None) -> list[int]:
         conn = db.get(Connection, s.connection_id)
         if conn is None or conn.deleted_at is not None:
             continue  # soft-deleted (recycle bin): don't sync
+        if conn.status == "needs_reauth":
+            # Its token is dead: every job would fail the same way, burn rate
+            # budget and re-alert. Wait for the reconnect (which resets status).
+            continue
         dataset = get_connector(conn.platform).dataset if conn else "ad_performance"
         if dataset == "config_snapshot":
             # No date range for snapshots — one capture per due tick.
@@ -73,13 +82,19 @@ def tick_schedules(db: Session, now: datetime | None = None) -> list[int]:
                 start, end = rng
                 if start > end:
                     continue
-                job = SyncJob(
-                    connection_id=s.connection_id, kind="scheduled",
-                    date_from=start, date_to=end, breakdown=bd,
-                )
-                db.add(job)
-                db.flush()
-                created.append(job.id)
+                mark_backfills_complete(db, s.connection_id, bd, s.backfill_days,
+                                        today=now.date())
+                # A lagging account can pull the range far back: never reach past
+                # the backfill horizon, and cut it into month-sized jobs.
+                horizon = end - timedelta(days=s.backfill_days)
+                for c_start, c_end in split_range(max(start, horizon), end):
+                    job = SyncJob(
+                        connection_id=s.connection_id, kind="scheduled",
+                        date_from=c_start, date_to=c_end, breakdown=bd,
+                    )
+                    db.add(job)
+                    db.flush()
+                    created.append(job.id)
         s.last_enqueued_at = now
     db.commit()
     return created

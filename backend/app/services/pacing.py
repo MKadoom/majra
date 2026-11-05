@@ -30,7 +30,7 @@ def _mtd_spend(db: Session, budget: Budget, first: date, today: date) -> float:
         breakdown="none",
         platforms=[budget.platform] if budget.platform else None,
         account_ids=[budget.account_id] if budget.account_id else None,
-        reporting_currency=budget.currency or "USD",
+        reporting_currency=budget.currency or "SAR",
         user_id=budget.user_id,
     )
     return float(res["data"][0]["spend"]) if res["data"] else 0.0
@@ -67,7 +67,7 @@ def pacing_report(
                 "name": b.name,
                 "platform": b.platform,
                 "account_id": b.account_id,
-                "currency": b.currency or "USD",
+                "currency": b.currency or "SAR",
                 "amount_monthly": budget,
                 "spent_mtd": round(spent, 2),
                 "projected_month_end": round(projected, 2),

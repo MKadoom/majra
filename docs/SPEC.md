@@ -23,6 +23,9 @@ own package.
         auth_url(state, redirect_uri) -> str
         exchange_code(code, redirect_uri) -> TokenSet
         refresh(tokens) -> TokenSet
+        needs_refresh(tokens, now=None) -> bool     # default: has a refresh
+                                                     # token and expires within
+                                                     # `refresh_ahead` (10 min)
         # discovery
         fetch_accounts(tokens) -> list[AccountInfo]
         # data — iterators that yield raw dicts, already paginated
@@ -34,8 +37,22 @@ own package.
         normalize_insight(raw, breakdown) -> dict
 
 `level` is one of `campaign | adset | ad`. Errors: raise `TransientError`
-(retryable: rate limit, 5xx, timeout) or `PermanentError` (auth revoked, invalid
-request). Nothing else escapes a connector. `get_connector(platform)` returns an
+(retryable: rate limit, 5xx, timeout), `AuthError` (a `PermanentError` subclass:
+the credential itself is expired, revoked or rejected — HTTP 401, Meta codes
+102/190, TikTok 40100/40105/40001, a token endpoint rejecting the grant), or
+`PermanentError` (anything else not retryable, e.g. no permission on one
+account). Nothing else escapes a connector.
+
+Token lifecycle: before each sync the engine calls `refresh()` when
+`needs_refresh()` says so and saves the result, Fernet-encrypted, on the
+connection (keeping the old refresh token / `extra` if the platform didn't return
+new ones). `AuthError` is never treated as a per-account skip: it fails the job
+and sets the connection to `needs_reauth`, and the scheduler stops enqueueing
+`needs_reauth` connections until they are reconnected. Reconnecting —
+`GET /connect/{platform}?connection_id=…` (OAuth) or
+`POST /connections/service-account` with `connection_id` — replaces that
+connection's tokens in place and resets it to `active`, keeping its id,
+schedules, account allow-list and history. `get_connector(platform)` returns an
 instance; unknown platform raises `PermanentError`.
 
 Breakdown sets a connector may support (`BREAKDOWN_SETS`): `none`, `country`,
@@ -125,6 +142,14 @@ Other facts:
   followers`. `grain` is page | ig_user | post; `followers` is an as-of-date
   snapshot (the `/social-metrics` query maxes it, the daily flows are summed).
   Idempotency via delete+insert scoped to (account, date range).
+  Source metrics (Graph v26.0, T8): page `impressions` = `page_impressions`,
+  `reach` = `page_total_media_view_unique` (replaces `page_impressions_unique`,
+  retired in v26), `engagement` = `page_post_engagements`, `followers` =
+  `page_fans`; Instagram `reach`, `followers` = `follower_count`, and
+  `impressions` = daily `views` (metric_type=total_value — IG `impressions`
+  was retired 2025-04-21). If Meta rejects a metric the others are fetched one
+  by one and an `api.version` alert is raised. Reach/impressions are therefore
+  "media views" from these dates on, not comparable 1:1 with older rows.
 - `gtm_resources` (GTM) — built. A config snapshot, not daily metrics:
   `account_id, kind (container|workspace|tag|trigger|variable), container_ref,
   workspace_ref, external_id, name, type, data JSONB, captured_at`. Each sync
@@ -137,17 +162,34 @@ payload jsonb, fetched_at)`. Raw is the re-normalization source of truth and is
 never mutated.
 
 ## §4 Sync semantics (`app/services/sync.py`, `app/services/schedules.py`)
-- Watermark = `max(date)` present per (connection, breakdown set). It is
-  dataset-aware: web (GA4) connections read `fact_web_performance`, ad
-  connections read `fact_ad_performance`. So scheduling works for both.
-- A scheduled run fetches `[watermark - restatement_days, yesterday]`;
+- Watermarks are **per account**: `app.account_sync_state(account_id,
+  breakdown, synced_from, synced_to, backfill_completed_at)` holds the
+  contiguous range each account has synced successfully. A successful job
+  extends it only when the job's range touches or overlaps it (never across a
+  gap); a skipped account doesn't advance. An account the platform answered for
+  with no rows *does* advance (no activity is still "synced"). The connection's
+  watermark is the **oldest** `synced_to` among its (allow-listed) accounts that
+  have coverage; accounts that never synced don't hold it back. With no
+  coverage yet it falls back to `max(date)` of the dataset's fact table (the
+  fact-derived `watermark()` also still drives `/freshness`). Migration 0016
+  seeds coverage from existing facts with the backfill marked complete.
+- A scheduled run fetches `[watermark - restatement_days, yesterday]`, never
+  earlier than `yesterday - backfill_days`, split into ≤30-day jobs;
   `restatement_days` default 7 (platforms restate conversions retroactively).
+  Each tick stamps `backfill_completed_at` on accounts whose `synced_from` has
+  reached that horizon.
 - Write path (`run_sync`): append raw pages, upsert dims, then **delete+insert**
   facts scoped to (this connection's accounts, this breakdown, this date range)
-  in one transaction → every sync is idempotent and safe to retry. A row dated
-  outside the job's range is kept in raw but never written to facts (it would
-  escape the delete scope), and an account that errors mid-fetch contributes no
-  rows at all (its existing facts stay untouched).
+  in one transaction → every sync is idempotent and safe to retry. That
+  transaction holds `pg_advisory_xact_lock(7201, connection_id)`, so syncs of
+  one connection are serialized (an overlapping sync waits, then replaces the
+  first one's rows instead of doubling them; after `lock_timeout` 10 min it
+  fails with a retryable `TransientError`). A row dated outside the job's range
+  is kept in raw but never written to facts (it would escape the delete scope),
+  and an account that errors mid-fetch contributes no rows at all (its existing
+  facts stay untouched). **An account the platform answers with zero rows for a
+  range that already holds facts keeps those facts** (`stats.accounts_empty_kept`)
+  — an empty answer is never allowed to wipe stored data.
 - Dim resolution derives an ad's campaign/ad-set from the entity hierarchy when
   an insight row carries only the ad id. Meta and Google report full ids; TikTok
   and Snapchat report at ad level only, so their facts still get campaign_id and
@@ -172,10 +214,95 @@ Params: `date_from`, `date_to` (required); `breakdown` (default `none`);
 `platform[]`, `account_id[]`, `campaign_id[]`; `group_by[]` from
 `{platform, account, campaign, adset, ad, date, country, device}`; `sort`
 (prefix `-` for descending); `page`, `page_size` (max 1000).
+`currency` (default `SAR`, see §5a; unknown → 422); `group_by` also accepts
+`currency` (native, unconverted per-currency rows).
 Response: `{data: [{...group keys, spend, impressions, clicks, conversions,
-conversion_value, video_views, leads, purchases, ctr, cpc, cpm, cpa, roas}],
-page, page_size, total}`. `total` is the number of groups (1 when ungrouped).
-Derived metrics are null when their denominator is zero.
+purchase_value, conversion_value (alias), video_views, leads, purchases,
+messages_sent, messages_delivered, ctr, cpc, cpm, cpa, roas}], page,
+page_size, total, currency, warnings[]}`. `total` is the number of groups (1
+when ungrouped). Derived metrics are null when their denominator is zero.
+
+## §5a Metric semantics and currency (T5 — approved 2026-11-03)
+
+**Reporting currency**
+1. Every monetary figure the API returns is in ONE currency, named in the
+   response (`currency`). The default is **SAR** — for `/metrics`, `/v1/*`,
+   exports, saved reports, pacing, the digest and the dashboard. `currency=XXX`
+   picks another. Raw, unconverted sums across currencies are never returned;
+   the only unconverted view is `group_by=currency` (one row per currency).
+2. Conversion uses `fx_rates` (`rate_to_usd`); SAR→USD is pinned at the peg
+   (1 USD = 3.75 SAR) rather than the provider's quote.
+3. A currency with **no FX rate is excluded** from monetary sums (never passed
+   through at 1.0), and the response lists it in `warnings[]`
+   (`"no FX rate for XYZ — its spend is excluded"`).
+
+**Metric definitions (cross-platform)**
+| field | meaning | per platform |
+|---|---|---|
+| `spend` | money paid to the platform; provenance in `cost_source` | WhatsApp (T6): Meta `pricing_analytics` cost per Riyadh day (`pricing_analytics`); if Meta returns none, delivered × `MAJRA_WHATSAPP_PRICE_PER_DELIVERED` (`estimate`), or 0 if that price isn't in the account's currency (`missing`). Ad platforms: `platform` |
+| `purchases` | completed purchases/donations the platform attributes | Meta `omni_purchase`, TikTok `complete_payment`, Snapchat `conversion_purchases`; Google 0 until segmented; **WhatsApp 0** |
+| `purchase_value` *(API name; stored in the `conversion_value` column, which the API also still returns as an alias for one release)* | value of those purchases | same sources |
+| `roas` | `purchase_value / spend` | null when spend = 0 |
+| `conversions` | the platform's own optimisation-event count — **not comparable across platforms**, not used in ROAS or CPA | Meta purchases+leads, TikTok `conversion`, Snapchat purchases, Google all conversions |
+| `cpa` | `spend / purchases` (was spend / conversions) | |
+| `messages_sent`, `messages_delivered` *(new)* | WhatsApp marketing messages | WhatsApp only; its `impressions` become 0 so CPM isn't diluted |
+
+**Coverage**
+4. New `app.metric_coverage(platform, metric, valid_from, note)`. Where a
+   request reaches before `valid_from` (e.g. TikTok `purchases` before the
+   purchase field was pulled), the API returns a `warnings[]` entry and the
+   dashboard shows it. Migration 0017 seeds TikTok purchases with the first
+   date that has `purchases > 0` — read from the data, not assumed.
+   Migration 0017 also moves existing WhatsApp-connector rows' `purchases` →
+   `messages_sent` and `impressions` → `messages_delivered` (Meta accounts
+   relabelled `whatsapp` via `platform_override` keep their real purchases).
+
+**Spend provenance (T6)** — `fact_ad_performance.cost_source`
+(`platform | pricing_analytics | estimate | missing`, migration 0018; pre-T6
+WhatsApp rows are marked `estimate` until re-synced). `/metrics` adds a
+`warnings[]` entry for every platform with `estimate`/`missing` days in range,
+and accepts `group_by=cost_source`. WhatsApp days are **Riyadh days** (UTC+3):
+messaging and pricing analytics are pulled at HALF_HOUR granularity over a
+window aligned to Riyadh midnight and summed per Riyadh date (DAILY — Meta's
+own day boundaries — only if HALF_HOUR is refused).
+
+**Acceptance**
+5. With production data, Oct 2–31 2026 Explore (default view) must show spend
+   in SAR matching the per-platform native totals converted at the stored
+   rates, and ROAS = purchase_value / spend — the review's reference figures
+   are 120,313 SAR and 1.42 (to be re-checked against the live API after deploy).
+
+## §5c Meta Graph API version (T8)
+All Meta surfaces — ads (`meta`), Pages/Instagram (`meta_social`), WhatsApp
+analytics and the WhatsApp alert sender — call **Graph v26.0** (v21.0 is
+retired 2027-01-21). `python -m scripts.meta_parity --connection-id N
+[--month 2026-02] [--versions v21.0,v26.0]` (#17) checks, read-only, that a
+closed month's totals are identical across versions, both through the
+connector's own fetch + normalize path and an account-level cross-check, and
+reports renamed or missing fields and action types. Exit 0 = parity, 1 = drift,
+2 = could not run. The February 2026 reference (86,914.24 spend / 1,629
+purchases / 177,721.76 purchase value) is printed for information. Run on
+connection 12 on 2026-11-04: PASS on every metric.
+
+## §5b Reconciliation and contract fixtures (T7)
+- `BaseConnector.fetch_account_totals(tokens, account, date_from, date_to)` —
+  optional; returns the platform's OWN account-level daily `{spend,
+  impressions, purchases}` (Meta `level=account`, Snapchat account stats), or
+  `None` = unsupported (TikTok, Google Ads, GA4, social, WhatsApp today).
+- `app/services/reconciliation.py`, daily beat task (45 min before the
+  digest): for active, non-deleted, allow-listed accounts, compare those totals
+  with stored facts (breakdown `none`, native currency) for the 7 days ending
+  two days ago. Tolerance: spend max(1 unit, 1%), impressions max(10, 1%),
+  purchases max(1, 2%). Every check is stored in `app.reconciliation_results`
+  (migration 0019); mismatches raise one `data.mismatch` alert; platform errors
+  are recorded, not alerted. `GET /reconciliation` (also `/v1`) = latest run;
+  `POST /reconciliation/run` runs it now.
+- Contract fixtures: `backend/tests/fixtures/contracts/<platform>/*.json`
+  (`synthetic-*` from documented shapes, `recorded-*` from
+  `python -m scripts.record_contracts --connection-id N --date YYYY-MM-DD`,
+  read-only, tokens/secrets/names redacted). `tests/test_contracts.py` replays
+  every file through the real connector and asserts the normalized contract
+  and that ad-level rows add up to the account totals.
 
 ## §6 App tables (schema `app`, `app/models/app_models.py`)
     users(id, email UNIQUE, password_hash, created_at)

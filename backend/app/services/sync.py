@@ -7,7 +7,7 @@ appended to the raw layer first and are the re-normalization source of truth.
 from datetime import UTC, date, datetime, timedelta
 
 import structlog
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.connectors.base import (
@@ -18,9 +18,10 @@ from app.connectors.base import (
     get_connector,
 )
 from app.core.observability import SYNC_ROWS, SYNC_SECONDS, SYNCS
-from app.core.security import decrypt_tokens
+from app.core.security import decrypt_tokens, encrypt_tokens
 from app.models import (
     Account,
+    AccountSyncState,
     Ad,
     Adset,
     Campaign,
@@ -40,6 +41,64 @@ def _log(db: Session, job: SyncJob, event: str, level: str = "info", **data) -> 
     db.add(SyncLog(sync_job_id=job.id, level=level, event=event, data=data))
     db.flush()
     log.info(event, sync_job_id=job.id, **data)
+
+
+# ------------------------------------------------------------- write safety
+# Advisory-lock namespace for "one sync writes to a connection at a time".
+SYNC_LOCK_CLASS = 7_201
+# How long a sync waits for another sync on the same connection before giving up
+# with a retryable error (the worker then retries with backoff).
+SYNC_LOCK_TIMEOUT = "10min"
+
+
+def _lock_connection(db: Session, connection_id: int) -> None:
+    """Serialize writers per connection for the rest of this transaction.
+
+    Two overlapping syncs of the same connection would each delete the range
+    (seeing none of the other's uncommitted rows) and each insert, doubling the
+    facts. A transaction-scoped advisory lock makes the second one wait until the
+    first commits; it then deletes the first one's rows and the totals stay right.
+    Released automatically at commit/rollback — so nothing may commit between
+    here and the end of the sync."""
+    from sqlalchemy.exc import OperationalError
+
+    db.execute(text(f"SET LOCAL lock_timeout = '{SYNC_LOCK_TIMEOUT}'"))
+    try:
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:cls, :key)"),
+            {"cls": SYNC_LOCK_CLASS, "key": connection_id},
+        )
+    except OperationalError as exc:
+        raise TransientError(
+            f"connection {connection_id} is busy with another sync"
+        ) from exc
+
+
+def _has_rows(db: Session, model, account_id: int, job, *extra) -> bool:
+    return db.scalar(
+        select(model.id).where(
+            model.account_id == account_id,
+            model.date >= job.date_from,
+            model.date <= job.date_to,
+            *extra,
+        ).limit(1)
+    ) is not None
+
+
+def advance_coverage(db: Session, account_id: int, breakdown: str,
+                     date_from: date, date_to: date) -> None:
+    """Extend an account's synced range with a successful job's range — only
+    when the two touch or overlap, so the range never papers over a gap."""
+    st = db.get(AccountSyncState, (account_id, breakdown))
+    if st is None:
+        db.add(AccountSyncState(account_id=account_id, breakdown=breakdown,
+                                synced_from=date_from, synced_to=date_to))
+        db.flush()  # so a second call in this transaction finds it
+        return
+    one = timedelta(days=1)
+    if date_from <= st.synced_to + one and date_to >= st.synced_from - one:
+        st.synced_from = min(st.synced_from, date_from)
+        st.synced_to = max(st.synced_to, date_to)
 
 
 # ------------------------------------------------------------------ dims
@@ -194,8 +253,10 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
     raw_model = connector.raw_model
     total_rows = 0
     facts: list[dict] = []
-    synced_acc_ids: list[int] = []
+    synced_acc_ids: list[int] = []   # accounts whose facts get delete+insert
+    ok_acc_ids: list[int] = []       # accounts the platform answered for
     skipped: list[str] = []
+    empty_kept: list[str] = []
     for acc in accounts:
         # Per-account isolation: one ad account returning a persistent error
         # (e.g. Meta HTTP 500 on a disabled/broken account) must not sink the
@@ -253,9 +314,16 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
                         video_views=norm["video_views"],
                         leads=norm["leads"],
                         purchases=norm["purchases"],
+                        messages_sent=norm.get("messages_sent", 0),
+                        messages_delivered=norm.get("messages_delivered", 0),
+                        cost_source=norm.get("cost_source", "platform"),
                     )
                 )
                 fetched += 1
+        except AuthError:
+            # A dead token is not one bad account — every account will fail the
+            # same way. Fail the job so the connection is flagged needs_reauth.
+            raise
         except (TransientError, PermanentError, Exception) as exc:  # noqa: BLE001
             skipped.append(acc.external_id)
             _log(
@@ -263,8 +331,19 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
                 account=acc.external_id, error=f"{type(exc).__name__}: {exc}",
             )
             continue
+        if not acc_facts and _has_rows(db, FactAdPerformance, acc.id, job,
+                                       FactAdPerformance.breakdown == job.breakdown):
+            # The platform answered with nothing for a range we already hold
+            # data for. Far more likely a platform glitch than a real wipe, so
+            # keep what we have instead of deleting it.
+            empty_kept.append(acc.external_id)
+            _log(db, job, "insights.empty_kept", level="warning",
+                 account=acc.external_id)
+            ok_acc_ids.append(acc.id)
+            continue
         facts.extend(acc_facts)
         synced_acc_ids.append(acc.id)
+        ok_acc_ids.append(acc.id)
         if out_of_range:
             _log(
                 db, job, "insights.out_of_range", level="warning",
@@ -273,7 +352,7 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
         _log(db, job, "insights.fetched", account=acc.external_id, rows=fetched)
         total_rows += fetched
 
-    if skipped and not synced_acc_ids:
+    if skipped and not ok_acc_ids:
         # Every account failed — surface it as a real failure.
         raise TransientError(
             f"{conn.platform}: all {len(skipped)} account(s) errored "
@@ -297,9 +376,11 @@ def _handle_ad_performance(db, conn, connector, job, accounts, tokens) -> dict:
     if facts:
         db.bulk_insert_mappings(FactAdPerformance, facts)
     return {
-        "accounts": len(synced_acc_ids),
+        "accounts": len(ok_acc_ids),
         "accounts_skipped": len(skipped),
         "accounts_skipped_ids": skipped,
+        "accounts_empty_kept": empty_kept,
+        "synced_account_ids": ok_acc_ids,
         "rows_fetched": total_rows,
         "rows_deleted": deleted,
         "rows_inserted": len(facts),
@@ -313,6 +394,8 @@ def _handle_web_performance(db, conn, connector, job, accounts, tokens) -> dict:
     raw_model = connector.raw_model
     total_rows = 0
     facts: list[dict] = []
+    write_ids: list[int] = []
+    empty_kept: list[str] = []
     for acc in accounts:
         fetched = 0
         for raw in connector.fetch_insights(
@@ -336,8 +419,14 @@ def _handle_web_performance(db, conn, connector, job, accounts, tokens) -> dict:
             fetched += 1
         _log(db, job, "report.fetched", account=acc.external_id, rows=fetched)
         total_rows += fetched
+        if fetched == 0 and _has_rows(db, FactWebPerformance, acc.id, job):
+            empty_kept.append(acc.external_id)
+            _log(db, job, "insights.empty_kept", level="warning",
+                 account=acc.external_id)
+        else:
+            write_ids.append(acc.id)
 
-    acc_ids = [a.id for a in accounts]
+    acc_ids = write_ids
     deleted = 0
     if acc_ids:
         res = db.execute(
@@ -352,6 +441,8 @@ def _handle_web_performance(db, conn, connector, job, accounts, tokens) -> dict:
         db.bulk_insert_mappings(FactWebPerformance, facts)
     return {
         "accounts": len(accounts),
+        "accounts_empty_kept": empty_kept,
+        "synced_account_ids": [a.id for a in accounts],
         "rows_fetched": total_rows,
         "rows_deleted": deleted,
         "rows_inserted": len(facts),
@@ -375,6 +466,8 @@ def _handle_social_performance(db, conn, connector, job, accounts, tokens) -> di
     raw_model = connector.raw_model
     total_rows = 0
     facts: list[dict] = []
+    write_ids: list[int] = []
+    empty_kept: list[str] = []
     for acc in accounts:
         fetched = 0
         for raw in connector.fetch_insights(
@@ -397,8 +490,14 @@ def _handle_social_performance(db, conn, connector, job, accounts, tokens) -> di
             fetched += 1
         _log(db, job, "social.fetched", account=acc.external_id, rows=fetched)
         total_rows += fetched
+        if fetched == 0 and _has_rows(db, FactSocialPerformance, acc.id, job):
+            empty_kept.append(acc.external_id)
+            _log(db, job, "insights.empty_kept", level="warning",
+                 account=acc.external_id)
+        else:
+            write_ids.append(acc.id)
 
-    acc_ids = [a.id for a in accounts]
+    acc_ids = write_ids
     deleted = 0
     if acc_ids:
         res = db.execute(
@@ -413,6 +512,8 @@ def _handle_social_performance(db, conn, connector, job, accounts, tokens) -> di
         db.bulk_insert_mappings(FactSocialPerformance, facts)
     return {
         "accounts": len(accounts),
+        "accounts_empty_kept": empty_kept,
+        "synced_account_ids": [a.id for a in accounts],
         "rows_fetched": total_rows,
         "rows_deleted": deleted,
         "rows_inserted": len(facts),
@@ -463,6 +564,29 @@ def _handle_config_snapshot(db, conn, connector, job, accounts, tokens) -> dict:
 DATASET_HANDLERS["config_snapshot"] = _handle_config_snapshot
 
 
+def refresh_tokens_if_due(db: Session, conn, connector, tokens: TokenSet, job=None,
+                          now: datetime | None = None) -> TokenSet:
+    """Refresh the stored token before it expires and save it (encrypted) on
+    the connection, so a rotated refresh token is never lost. A refresh the
+    platform rejects raises AuthError, which fails the job and flags the
+    connection needs_reauth. Token values are never logged."""
+    if not connector.needs_refresh(tokens, now):
+        return tokens
+    fresh = connector.refresh(tokens)
+    merged = TokenSet(
+        access_token=fresh.access_token,
+        refresh_token=fresh.refresh_token or tokens.refresh_token,
+        expires_at=fresh.expires_at,
+        extra=fresh.extra or tokens.extra,
+    )
+    if merged.to_dict() != tokens.to_dict():
+        conn.encrypted_tokens = encrypt_tokens(merged.to_dict())
+        db.commit()
+        if job is not None:
+            _log(db, job, "token.refreshed", expires_at=merged.expires_at)
+    return merged
+
+
 def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     job = db.get(SyncJob, sync_job_id)
     if job is None:
@@ -476,6 +600,9 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
     try:
         connector = get_connector(conn.platform)
         tokens = TokenSet.from_dict(decrypt_tokens(conn.encrypted_tokens))
+        tokens = refresh_tokens_if_due(db, conn, connector, tokens, job)
+        # From here to the final commit is ONE transaction holding the lock.
+        _lock_connection(db, conn.id)
 
         accounts = _upsert_accounts(db, conn, connector.fetch_accounts(tokens))
         # Optional per-connection allow-list: sync only the chosen accounts. This
@@ -499,6 +626,9 @@ def run_sync(db: Session, sync_job_id: int) -> SyncJob:
             stats = {**stats, "api_warnings": warnings}
             _log(db, job, "api.version_warning", level="warning", warnings=warnings)
 
+        if connector.dataset != "config_snapshot":
+            for acc_id in stats.get("synced_account_ids") or []:
+                advance_coverage(db, acc_id, job.breakdown, job.date_from, job.date_to)
         job.status = "success"
         job.stats = stats
         job.finished_at = datetime.now(UTC)
@@ -552,6 +682,62 @@ def watermark(db: Session, connection_id: int, breakdown: str) -> date | None:
     return db.scalar(stmt)
 
 
+def _tracked_accounts(db: Session, connection_id: int) -> list[int]:
+    conn = db.get(Connection, connection_id)
+    stmt = select(Account.id).where(Account.connection_id == connection_id)
+    wanted = set(conn.synced_account_ids or []) if conn else set()
+    if wanted:
+        stmt = stmt.where(Account.external_id.in_(wanted))
+    return list(db.scalars(stmt))
+
+
+def account_watermark(db: Session, connection_id: int, breakdown: str) -> date | None:
+    """Oldest `synced_to` among the connection's (allow-listed) accounts that
+    have coverage — i.e. how far the laggiest known account has got."""
+    ids = _tracked_accounts(db, connection_id)
+    if not ids:
+        return None
+    return db.scalar(
+        select(func.min(AccountSyncState.synced_to)).where(
+            AccountSyncState.account_id.in_(ids),
+            AccountSyncState.breakdown == breakdown,
+        )
+    )
+
+
+def mark_backfills_complete(db: Session, connection_id: int, breakdown: str,
+                            backfill_days: int, today: date | None = None) -> int:
+    """Stamp backfill_completed_at on accounts whose coverage now reaches the
+    backfill horizon. Returns how many were newly stamped."""
+    yesterday = (today or date.today()) - timedelta(days=1)
+    horizon = yesterday - timedelta(days=backfill_days)
+    ids = _tracked_accounts(db, connection_id)
+    if not ids:
+        return 0
+    rows = db.scalars(
+        select(AccountSyncState).where(
+            AccountSyncState.account_id.in_(ids),
+            AccountSyncState.breakdown == breakdown,
+            AccountSyncState.backfill_completed_at.is_(None),
+            AccountSyncState.synced_from <= horizon,
+        )
+    ).all()
+    for st in rows:
+        st.backfill_completed_at = datetime.now(UTC)
+    return len(rows)
+
+
+def split_range(start: date, end: date, days: int = 30) -> list[tuple[date, date]]:
+    """Split [start, end] into consecutive chunks of at most `days` days."""
+    out: list[tuple[date, date]] = []
+    cur = start
+    while cur <= end:
+        stop = min(cur + timedelta(days=days - 1), end)
+        out.append((cur, stop))
+        cur = stop + timedelta(days=1)
+    return out
+
+
 def incremental_range(
     db: Session,
     connection_id: int,
@@ -561,10 +747,18 @@ def incremental_range(
 ) -> tuple[date, date] | None:
     """[watermark - restatement_days, yesterday]; None means backfill needed.
 
+    The watermark is per ACCOUNT (app.account_sync_state): the connection
+    resumes from the account that is furthest behind, so a healthy account can't
+    hide another one's gap. Accounts that have never synced successfully don't
+    hold the range back (they're still in every job). With no coverage recorded
+    yet, falls back to the newest fact date (pre-0016 behaviour).
+
     `today` defaults to the wall clock but is injectable so the scheduler can
     pass its own reference time (keeps the whole computation deterministic).
     """
-    wm = watermark(db, connection_id, breakdown)
+    wm = account_watermark(db, connection_id, breakdown)
+    if wm is None:
+        wm = watermark(db, connection_id, breakdown)
     if wm is None:
         return None
     yesterday = (today or date.today()) - timedelta(days=1)

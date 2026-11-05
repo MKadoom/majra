@@ -11,7 +11,7 @@ from app.models import Account, Budget, Connection, FactAdPerformance, SyncJob
 from app.services import alerts
 from app.workers import tasks
 
-WA_URL = "https://graph.facebook.com/v21.0/PNID/messages"
+WA_URL = "https://graph.facebook.com/v26.0/PNID/messages"
 
 
 @pytest.fixture
@@ -270,7 +270,11 @@ def test_check_tokens_task_sends_token_and_version_alerts(db, sent, monkeypatch)
     assert "retires 2027-01-21" in sent[1].text()
 
 
-def test_api_version_notice_window():
+def test_api_version_notice_window(monkeypatch):
+    from app.connectors.meta import connector as meta_connector
+
+    # the sunset table still knows v21.0; pin it to exercise the window
+    monkeypatch.setattr(meta_connector, "GRAPH_VERSION", "v21.0")
     near = alerts.api_version_notices(today=date(2026, 11, 3))
     assert near == [{"platform": "meta", "version": "v21.0",
                      "sunset": "2027-01-21", "days_left": 79}]
@@ -363,7 +367,8 @@ def test_daily_digest_when_idle(db):
     text = d.text()
     assert "syncs: none ran" in text
     assert "no rows" in text
-    assert "API version notice" in text  # v21.0 is within 90 days of sunset
+    # majra now pins Graph v26.0, whose sunset isn't published: no notice
+    assert "API version notice" not in text
 
 
 # ------------------------------------------------------------ other tasks

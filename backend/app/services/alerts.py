@@ -43,7 +43,8 @@ TOKEN_WARN_DAYS = 14
 API_VERSION_WARN_DAYS = 90
 
 # Published sunset dates for API versions majra pins. Add the next one when a
-# connector is upgraded. Meta Graph v21.0 is retired 2027-01-21.
+# connector is upgraded. Meta Graph v21.0 is retired 2027-01-21 (majra moved to
+# v26.0 in T8; Meta hasn't published v26.0's sunset yet — add it when it does).
 API_SUNSETS: dict[str, dict[str, date]] = {
     "meta": {"v21.0": date(2027, 1, 21)},
 }
@@ -63,7 +64,7 @@ class AlertSettings(BaseSettings):
     alert_whatsapp_to: str = ""
     alert_whatsapp_template: str = ""
     alert_whatsapp_template_lang: str = "en"
-    alert_whatsapp_api_version: str = "v21.0"
+    alert_whatsapp_api_version: str = "v26.0"
     # Hour (UTC) the daily digest and token check run. 05:00 UTC = 08:00 Riyadh.
     alert_digest_hour_utc: int = 5
 
@@ -348,6 +349,14 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
     anomalies = anomaly_report(db, today=now.date())
     tokens = expiring_tokens(db, now=now)
     versions = api_version_notices(today=now.date())
+    reauth = [
+        {"connection_id": c.id, "platform": c.platform, "name": c.name}
+        for c in db.scalars(
+            select(Connection).where(
+                Connection.status == "needs_reauth", Connection.deleted_at.is_(None)
+            ).order_by(Connection.id)
+        )
+    ]
 
     lines = [f"last 24h to {now:%Y-%m-%d %H:%M} UTC"]
     if per_platform:
@@ -363,6 +372,9 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
     else:
         lines.append(f"spend {yesterday}: no rows")
     needs = []
+    if reauth:
+        needs.append(f"{len(reauth)} connection(s) need reconnecting ("
+                     + ", ".join(f"{r['platform']} · {r['name']}" for r in reauth) + ")")
     if stale:
         needs.append(f"{len(stale)} stale connection(s)")
     if over:
@@ -385,5 +397,6 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
                       for p, c, s in spend],
             "stale": stale, "over_budget": over, "anomalies": anomalies,
             "expiring_tokens": tokens, "api_versions": versions,
+            "needs_reauth": reauth,
         },
     )

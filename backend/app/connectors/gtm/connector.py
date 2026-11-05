@@ -14,6 +14,7 @@ import httpx
 
 from app.connectors.base import (
     AccountInfo,
+    AuthError,
     BaseConnector,
     Level,
     PermanentError,
@@ -166,6 +167,8 @@ class GTMConnector(BaseConnector):
                 last = f"gtm: {resp.status_code}"
                 self._backoff(attempt)
                 continue
+            if resp.status_code == 401:
+                raise AuthError("gtm: 401 credentials rejected")
             raise PermanentError(f"gtm: {resp.status_code} {resp.text[:200]}")
         raise TransientError(last)
 

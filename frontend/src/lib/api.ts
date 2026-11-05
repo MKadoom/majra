@@ -121,7 +121,7 @@ export const CURRENCY_CHOICES = [
 
 /** Build the selector list: curated choices that have a rate, in curated order. */
 export function currencyOptions(available: string[]): string[] {
-  const have = new Set(["USD", ...available]);
+  const have = new Set(["SAR", "USD", ...available]); // SAR is pegged, always rated
   return CURRENCY_CHOICES.filter((c) => have.has(c));
 }
 
@@ -143,10 +143,12 @@ export const DATASET_ENDPOINT: Record<Exclude<Dataset, "tags">, string> = {
  * split by platform.
  */
 export const DATASET_MEASURES: Record<Exclude<Dataset, "tags">, string[]> = {
+  // SPEC §5a: CPA and ROAS are per purchase; `conversions` is each platform's
+  // own (non-comparable) count; WhatsApp messages have their own fields.
   ads: [
-    "spend", "conversions", "cpa", "roas",
-    "impressions", "clicks", "ctr", "cpc", "cpm",
-    "conversion_value", "video_views", "leads", "purchases",
+    "spend", "purchases", "cpa", "roas",
+    "purchase_value", "impressions", "clicks", "ctr", "cpc", "cpm",
+    "conversions", "leads", "video_views", "messages_sent", "messages_delivered",
   ],
   web: ["sessions", "users", "conversions", "revenue"],
   social: ["impressions", "reach", "engagement", "followers"],
@@ -156,7 +158,7 @@ export const DATASET_MEASURES: Record<Exclude<Dataset, "tags">, string[]> = {
 export const PRIMARY_MEASURES = 4;
 
 export const DATASET_GROUPS: Record<Exclude<Dataset, "tags">, string[]> = {
-  ads: ["platform", "date", "account", "campaign", "adset", "ad", "country", "device"],
+  ads: ["platform", "date", "account", "campaign", "adset", "ad", "country", "device", "currency", "cost_source"],
   web: ["date", "source", "medium", "campaign", "account"],
   social: ["date", "grain", "external_ref", "account"],
 };

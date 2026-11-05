@@ -49,7 +49,7 @@ function rangeFor(preset: Preset, from: string, to: string): { from: string; to:
 
 export default function FundingPage() {
   const { t, p: pName, dir } = useLocale();
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("SAR");
   const [fxCurrencies, setFxCurrencies] = useState<string[]>(["USD"]);
   const [granularity, setGranularity] = useState<"day" | "month">("day");
   const [preset, setPreset] = useState<Preset>("last30");

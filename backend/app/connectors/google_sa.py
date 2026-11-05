@@ -10,7 +10,7 @@ import time
 import httpx
 import jwt
 
-from app.connectors.base import PermanentError, TransientError
+from app.connectors.base import AuthError, PermanentError, TransientError
 
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer"
@@ -41,8 +41,11 @@ def mint_access(service_account: dict, scope: str) -> str:
         )
     except httpx.HTTPError as exc:
         raise TransientError(f"service-account token network error {exc}") from exc
+    if resp.status_code >= 500:
+        raise TransientError(f"service-account token server {resp.status_code}")
     data = resp.json()
     if resp.status_code >= 400 or "error" in data:
+        # Key deleted/disabled or account removed: the credentials must be replaced.
         detail = data.get("error_description") or data.get("error") or resp.status_code
-        raise PermanentError(f"service-account token exchange failed — {detail}")
+        raise AuthError(f"service-account token exchange failed — {detail}")
     return data["access_token"]

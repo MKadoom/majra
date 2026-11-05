@@ -1,13 +1,14 @@
 """Connector SDK (SPEC §2).
 
 Every connector subclasses BaseConnector, sets `platform`, and is auto-registered.
-Connectors raise only TransientError (retryable) or PermanentError. Nothing else
-escapes a connector. Normalization functions are pure and fixture-testable.
+Connectors raise only TransientError (retryable), PermanentError, or its subclass
+AuthError (credentials expired/revoked: the connection is flagged needs_reauth and
+must be reconnected). Nothing else escapes a connector. Normalization functions are pure and fixture-testable.
 """
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import ClassVar, Literal
 
 Level = Literal["campaign", "adset", "ad"]
@@ -26,6 +27,17 @@ class PermanentError(Exception):
 
 class AuthError(PermanentError):
     """Credentials expired or revoked — the user must reconnect the platform."""
+
+
+def token_expiry(tokens: "TokenSet") -> datetime | None:
+    """`expires_at` as an aware UTC datetime, or None if absent/unparseable."""
+    if not tokens.expires_at:
+        return None
+    try:
+        exp = datetime.fromisoformat(str(tokens.expires_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return exp if exp.tzinfo else exp.replace(tzinfo=UTC)
 
 
 @dataclass
@@ -85,6 +97,9 @@ class BaseConnector(ABC):
     # reporters (TikTok/Snapchat) keep this False: they need the entity map to
     # derive an ad's parents.
     insights_carry_hierarchy: ClassVar[bool] = False
+    # The sync engine refreshes a stored token this long before it expires
+    # (see needs_refresh) and saves the result, encrypted, on the connection.
+    refresh_ahead: ClassVar[timedelta] = timedelta(minutes=10)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -113,6 +128,18 @@ class BaseConnector(ABC):
     @abstractmethod
     def refresh(self, tokens: TokenSet) -> TokenSet: ...
 
+    def needs_refresh(self, tokens: TokenSet, now: datetime | None = None) -> bool:
+        """Should the engine call `refresh()` before this sync? Default: only
+        when there is a refresh token and the access token is missing an expiry
+        or expires within `refresh_ahead`. Connectors whose tokens refresh some
+        other way (Meta's long-lived exchange) override this."""
+        if not tokens.refresh_token:
+            return False
+        exp = token_expiry(tokens)
+        if exp is None:
+            return True
+        return exp - (now or datetime.now(UTC)) <= self.refresh_ahead
+
     # -------------------------------------------------------- discovery
     @abstractmethod
     def fetch_accounts(self, tokens: TokenSet) -> list[AccountInfo]: ...
@@ -132,6 +159,17 @@ class BaseConnector(ABC):
         date_to: date,
         breakdown: str,
     ) -> Iterator[dict]: ...
+
+    # ---------------------------------------------------- reconciliation
+    def fetch_account_totals(
+        self, tokens: TokenSet, account_external_id: str, date_from: date, date_to: date
+    ) -> dict[str, dict] | None:
+        """Optional (T7): the platform's OWN account-level daily totals,
+        `{"YYYY-MM-DD": {"spend": float, "impressions": int, "purchases": int}}`,
+        fetched independently of the ad-level rows the sync stores — so the
+        daily reconciliation can catch dropped pages, missing ads or bad
+        normalization. Returning None means "not supported" (skipped)."""
+        return None
 
     # ---------------------------------------------------- normalization
     @abstractmethod

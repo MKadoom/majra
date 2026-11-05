@@ -16,12 +16,13 @@ from app.connectors.base import (
     PermanentError,
     TokenSet,
     TransientError,
+    token_expiry,
 )
 from app.connectors.meta import mapping
 from app.core.config import settings
 from app.models import RawMetaInsights
 
-GRAPH_VERSION = "v21.0"
+GRAPH_VERSION = "v26.0"
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
 DIALOG = f"https://www.facebook.com/{GRAPH_VERSION}/dialog/oauth"
 # Shape of a Graph API version ("v21.0"); anything else would end up in a URL.
@@ -98,6 +99,14 @@ class MetaConnector(BaseConnector):
             },
         )
         return self._to_long_lived(data["access_token"])
+
+    # A long-lived user token lasts ~60 days. Re-exchange it two weeks before
+    # it lapses (the exchange only works while the token is still valid).
+    refresh_ahead = timedelta(days=14)
+
+    def needs_refresh(self, tokens: TokenSet, now: datetime | None = None) -> bool:
+        exp = token_expiry(tokens)
+        return exp is not None and exp - (now or datetime.now(UTC)) <= self.refresh_ahead
 
     def refresh(self, tokens: TokenSet) -> TokenSet:
         """Meta user tokens have no silent refresh; a still-valid long-lived
@@ -185,6 +194,26 @@ class MetaConnector(BaseConnector):
             f"{self.graph}/{account_external_id}/insights", params, tokens
         )
 
+    def fetch_account_totals(self, tokens, account_external_id, date_from, date_to):
+        """Account-level daily totals straight from Meta (level=account), for
+        reconciliation. Purchases use the same action types as the sync."""
+        params = {
+            "level": "account",
+            "time_increment": 1,
+            "time_range": json.dumps(
+                {"since": date_from.isoformat(), "until": date_to.isoformat()}),
+            "fields": "date_start,spend,impressions,actions",
+            "limit": 500,
+        }
+        out: dict[str, dict] = {}
+        for r in self._paginate(f"{self.graph}/{account_external_id}/insights", params, tokens):
+            out[r["date_start"]] = {
+                "spend": float(r.get("spend") or 0),
+                "impressions": int(r.get("impressions") or 0),
+                "purchases": int(mapping.action_total(r.get("actions"), mapping.PURCHASE)),
+            }
+        return out
+
     # ---------------------------------------------------- normalization
     def normalize_entity(self, raw: dict, level: Level) -> dict:
         return {
@@ -255,7 +284,7 @@ class MetaConnector(BaseConnector):
                 return data
             code = err.get("code")
             msg = f"meta: [{code}] {err.get('message')}"
-            if code in AUTH_CODES or resp.status_code in (401, 403):
+            if code in AUTH_CODES or resp.status_code == 401:
                 raise AuthError(msg)
             if code in TRANSIENT_CODES or err.get("is_transient"):
                 last = msg

@@ -31,6 +31,8 @@ import type {
 const WEB = new Set(["ga4"]);
 const SOCIAL = new Set(["meta_social"]);
 const CONFIG = new Set(["gtm"]);
+// Connected with a pasted credential, not a browser OAuth flow.
+const SERVICE_ACCOUNT = new Set(["ga4", "gtm", "whatsapp"]);
 
 const STRIP_FROM = daysAgo(14);
 const STRIP_TO = daysAgo(1);
@@ -233,6 +235,24 @@ function ConnectionCard({
     }
   }
 
+  // Re-authorise IN PLACE: the backend replaces this connection's tokens, so its
+  // schedule, account selection and history are kept (no duplicate connection).
+  async function reconnect() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const { auth_url } = await api.get<{ auth_url: string }>(
+        `/connect/${connection.platform}${qs({ connection_id: connection.id })}`,
+      );
+      window.open(auth_url, "_blank", "noopener");
+      setNote(t("conn.reconnectStarted"));
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : t("conn.loadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function createSchedule() {
     setBusy(true);
     try {
@@ -293,6 +313,15 @@ function ConnectionCard({
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        {!SERVICE_ACCOUNT.has(connection.platform) && (
+          <button
+            className={connection.status === "needs_reauth" ? "btn-primary" : "btn-quiet"}
+            onClick={reconnect}
+            disabled={busy}
+          >
+            {t("conn.reconnect")}
+          </button>
+        )}
         <button className="btn-quiet" onClick={runNow} disabled={busy}>
           {busy ? t("common.working") : t("conn.syncNow")}
         </button>

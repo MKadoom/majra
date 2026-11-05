@@ -107,9 +107,18 @@ failed job in **Sync jobs**, and an alert (WhatsApp if the
 14 days ahead, every morning, until they're reconnected. `GET /health` shows
 `alerts_configured` — if it's `false`, nothing is being sent.
 
-**The fix** is always the same: **Connections → Add connection →** pick the same
-platform and authorize again. The new tokens replace the old ones; historical
-data is untouched.
+**The fix** is always the same: on the connection's card press **Reconnect**
+and authorize again. The new tokens replace the old ones *on the same
+connection* — its schedule, account selection and history stay. (Don't use
+**Add connection** for this: that creates a second connection.) While a
+connection is `needs_reauth` its schedule is paused automatically and the
+morning digest lists it.
+
+Tokens that can be refreshed are refreshed automatically before they lapse:
+Snapchat and Google Ads use their refresh token; Meta's ~60-day token is
+re-exchanged when it has 14 days left. Whether Meta actually extends it on
+re-exchange isn't guaranteed — if the `token.expiring` alert keeps coming,
+press Reconnect.
 
 Once the connection is healthy, backfill the days you lost:
 
