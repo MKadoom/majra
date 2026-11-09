@@ -192,3 +192,82 @@ def test_orders_listing_and_api_key_read(auth_client, db):
     w = auth_client.post("/donations/import", json={"filename": "a.csv", "content": "x"},
                          headers={"Authorization": f"Bearer {key}"})
     assert w.status_code == 401
+
+
+# ---------------------------------------------------- GA4 automatic reference
+def _ga4_rows(db, uid, rows):
+    from app.models import FactWebPerformance
+
+    conn = Connection(user_id=uid, platform="ga4", name="GA4", encrypted_tokens=b"")
+    db.add(conn)
+    db.flush()
+    acc = Account(connection_id=conn.id, platform="ga4", external_id="p1", name="GA4")
+    db.add(acc)
+    db.flush()
+    for d, src, med, n, rev in rows:
+        db.add(FactWebPerformance(date=d, account_id=acc.id, source=src, medium=med,
+                                  campaign_name=None, sessions=10, users=8, conversions=n,
+                                  revenue=rev, purchases=n))
+    db.commit()
+
+
+def test_ga4_platform_mapping():
+    assert svc.ga4_platform("snapchat", "paid_social") == "snapchat"
+    assert svc.ga4_platform("ig", "social") == "meta"
+    assert svc.ga4_platform("l.instagram.com", "referral") == "meta"
+    assert svc.ga4_platform("tiktok", None) == "tiktok"
+    assert svc.ga4_platform("google", "cpc") == "google_ads"
+    assert svc.ga4_platform("google", "organic") is None      # SEO is not Google Ads
+    assert svc.ga4_platform("(direct)", "(none)") is None
+
+
+def test_compare_uses_ga4_without_any_import(auth_client, db, claims):
+    d = date(2026, 10, 6)
+    _ga4_rows(db, claims, [(d, "snapchat", "paid_social", 1, 100),
+                           (d, "google", "organic", 2, 80),
+                           (d, "(direct)", "(none)", 1, 50)])
+    body = auth_client.get("/donations/compare", params={
+        "date_from": "2026-10-01", "date_to": "2026-10-31"}).json()
+    snap = {r["platform"]: r for r in body["rows"]}["snapchat"]
+    assert snap["claimed_purchases"] == 3 and snap["ga4_purchases"] == 1
+    assert snap["ga4_ratio"] == 3.0 and snap["jood_orders"] == 0
+    t = body["totals"]
+    assert t["ga4_purchases"] == 4 and t["ga4_revenue"] == 230.0
+    assert t["overclaim_vs_ga4"] == 0.75                       # 3 claimed / 4 in GA4
+    assert not any("connect GA4" in w for w in body["warnings"])
+    assert any("GA4 is the reference" in w for w in body["warnings"])
+
+
+def test_compare_warns_when_ga4_missing(auth_client, claims):
+    body = auth_client.get("/donations/compare", params={
+        "date_from": "2026-10-01", "date_to": "2026-10-31"}).json()
+    assert any("connect GA4" in w for w in body["warnings"])
+
+
+def test_digest_flags_overclaiming_vs_ga4(auth_client, db, claims):
+    from datetime import UTC
+
+    from app.services.alerts import daily_digest
+
+    _ga4_rows(db, claims, [(date(2026, 10, 6), "snapchat", "paid_social", 1, 100)])
+    d = daily_digest(db, now=datetime(2026, 10, 8, 5, tzinfo=UTC))
+    text = d.text()
+    assert "claims vs GA4 (7d) snapchat: 3 vs 1 = 3.0x" in text
+    assert "over-claiming vs GA4: snapchat" in text
+    assert d.payload["claims_vs_ga4"][0]["flag"] is True
+
+
+def test_personal_data_is_never_stored(auth_client, db):
+    csv_text = ("رقم العملية,اسم المتبرع,رقم الجوال,عنوان المشروع,مبلغ التبرع,"
+                "وسيلة التبرع,الحساب البنكي,التاريخ\n"
+                "1659289886296,Someone,966500000000,بيت كفيف,100,بطاقة,SA00,"
+                "2026-11-09 12:51:18\n")
+    r = auth_client.post("/donations/import", json={
+        "filename": "jood.csv", "content": csv_text, "dry_run": False})
+    assert r.status_code == 200, r.text
+    assert r.json()["mapping"]["order_id"] == "رقم العملية"
+    assert r.json()["mapping"]["amount"] == "مبلغ التبرع"
+    o = db.query(DonationOrder).one()
+    assert set(o.raw) == {"رقم العملية", "عنوان المشروع", "مبلغ التبرع", "وسيلة التبرع",
+                          "التاريخ"}
+    assert float(o.amount) == 100.0 and o.date == date(2026, 11, 9)

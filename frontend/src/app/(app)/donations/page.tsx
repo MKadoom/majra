@@ -119,12 +119,12 @@ export default function DonationsPage() {
           <>
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="panel p-3">
-                <p className="eyebrow">{t("don.realDonations")}</p>
-                <p className="num mt-1 text-2xl">{fmt(cmp.totals.jood_orders, 0)}</p>
+                <p className="eyebrow">{t("don.ga4Purchases")}</p>
+                <p className="num mt-1 text-2xl">{fmt(cmp.totals.ga4_purchases, 0)}</p>
               </div>
               <div className="panel p-3">
-                <p className="eyebrow">{t("don.realAmount")}</p>
-                <p className="num mt-1 text-2xl">{fmt(cmp.totals.jood_amount)} {ccy}</p>
+                <p className="eyebrow">{t("don.realDonations")}</p>
+                <p className="num mt-1 text-2xl">{cmp.totals.jood_orders ? fmt(cmp.totals.jood_orders, 0) : "—"}</p>
               </div>
               <div className="panel p-3">
                 <p className="eyebrow">{t("don.claimedAll")}</p>
@@ -133,7 +133,9 @@ export default function DonationsPage() {
               <div className="panel p-3">
                 <p className="eyebrow">{t("don.overclaim")}</p>
                 <p className="num mt-1 text-2xl">
-                  {cmp.totals.overclaim === null ? "—" : `${fmt(cmp.totals.overclaim)}×`}
+                  {(cmp.totals.overclaim ?? cmp.totals.overclaim_vs_ga4) === null
+                    ? "—"
+                    : `${fmt(cmp.totals.overclaim ?? cmp.totals.overclaim_vs_ga4)}×`}
                 </p>
               </div>
             </div>
@@ -144,6 +146,8 @@ export default function DonationsPage() {
                     <th className="px-2 py-2 text-start eyebrow">{t("don.platform")}</th>
                     <th className="px-2 py-2 text-end eyebrow">{t("don.spend")}</th>
                     <th className="px-2 py-2 text-end eyebrow">{t("don.claimed")}</th>
+                    <th className="px-2 py-2 text-end eyebrow">{t("don.ga4")}</th>
+                    <th className="px-2 py-2 text-end eyebrow">{t("don.ga4Ratio")}</th>
                     <th className="px-2 py-2 text-end eyebrow">{t("don.real")}</th>
                     <th className="px-2 py-2 text-end eyebrow">{t("don.ratio")}</th>
                     <th className="px-2 py-2 text-end eyebrow">{t("don.cpd")}</th>
@@ -161,6 +165,10 @@ export default function DonationsPage() {
                       </td>
                       <td className="num px-2 py-2 text-end">{fmt(r.spend)}</td>
                       <td className="num px-2 py-2 text-end">{fmt(r.claimed_purchases, 0)}</td>
+                      <td className="num px-2 py-2 text-end">{fmt(r.ga4_purchases, 0)}</td>
+                      <td className={`num px-2 py-2 text-end ${r.ga4_ratio !== null && r.ga4_ratio > 1.5 ? "text-warn" : ""}`}>
+                        {r.ga4_ratio === null ? "—" : `${fmt(r.ga4_ratio)}×`}
+                      </td>
                       <td className="num px-2 py-2 text-end">
                         {fmt(r.jood_orders, 0)}
                         <span className="text-muted"> · {fmt(r.jood_amount)}</span>

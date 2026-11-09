@@ -303,6 +303,39 @@ def api_version_alert(items: list[dict]) -> Alert | None:
                  payload={"notices": items})
 
 
+OVERCLAIM_FLAG = 1.5   # a platform claiming >1.5x the purchases GA4 saw from it
+
+
+def claims_vs_ga4(db: Session, today: date) -> list[dict]:
+    """Last 7 complete days, the owner's connections: each ad platform's claimed
+    purchases vs GA4 purchases from that platform's traffic. Empty when there
+    is no GA4 data (nothing to compare against)."""
+    from app.models import User
+    from app.services.donations import compare
+
+    owner = db.scalar(select(User.id).where(User.is_owner.is_(True)).limit(1))
+    if owner is None:
+        return []
+    d2 = today - timedelta(days=1)
+    d1 = d2 - timedelta(days=6)
+    try:
+        res = compare(db, owner, d1, d2)
+    except ValueError:
+        return []
+    if not res["totals"]["ga4_purchases"]:
+        return []
+    out = []
+    for r in res["rows"]:
+        if r["platform"] == "unattributed" or not (r["claimed_purchases"] or r["ga4_purchases"]):
+            continue
+        ratio = r["ga4_ratio"]
+        out.append({"platform": r["platform"], "claimed": r["claimed_purchases"],
+                    "ga4": r["ga4_purchases"], "ratio": ratio,
+                    "flag": bool(r["claimed_purchases"] and (
+                        ratio is None or ratio > OVERCLAIM_FLAG))})
+    return out
+
+
 def daily_digest(db: Session, now: datetime | None = None) -> Alert:
     """Morning summary of the last 24h. Spend is shown per platform *in each
     account's own currency* — never blended (blending is a known T5 issue)."""
@@ -385,6 +418,13 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
         needs.append(f"{len(tokens)} token(s) expiring")
     if versions:
         needs.append(f"{len(versions)} API version notice(s)")
+    claims = claims_vs_ga4(db, now.date())
+    for c in claims:
+        lines.append(f"claims vs GA4 (7d) {c['platform']}: {c['claimed']} vs {c['ga4']}"
+                     + (f" = {c['ratio']}x" if c["ratio"] is not None else ""))
+    over = [c["platform"] for c in claims if c["flag"]]
+    if over:
+        needs.append("over-claiming vs GA4: " + ", ".join(over))
     lines.append("attention: " + (", ".join(needs) if needs else "nothing"))
 
     return Alert(
@@ -398,5 +438,6 @@ def daily_digest(db: Session, now: datetime | None = None) -> Alert:
             "stale": stale, "over_budget": over, "anomalies": anomalies,
             "expiring_tokens": tokens, "api_versions": versions,
             "needs_reauth": reauth,
+            "claims_vs_ga4": claims,
         },
     )

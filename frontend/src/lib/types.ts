@@ -231,6 +231,9 @@ export type DonationCompareRow = {
   claim_ratio: number | null;
   cost_per_jood_donation: number | null;
   jood_roas: number | null;
+  ga4_purchases: number;
+  ga4_revenue: number;
+  ga4_ratio: number | null;
 };
 
 export type DonationCompare = {
@@ -244,6 +247,9 @@ export type DonationCompare = {
     jood_unattributed_orders: number;
     claimed_purchases_all_platforms: number;
     overclaim: number | null;
+    ga4_purchases: number;
+    ga4_revenue: number;
+    overclaim_vs_ga4: number | null;
   };
   warnings: string[];
 };

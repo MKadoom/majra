@@ -339,6 +339,17 @@ connection 12 on 2026-11-04: PASS on every metric.
   - totals, including over-claim across all platforms.
 
   It is evidence, not a correction: each platform's Ads Manager keeps its own number.
+- **GA4 is the automatic reference** (no upload needed). The GA4 connector also pulls
+  `ecommercePurchases` into `fact_web_performance.purchases` (migration 0021).
+  - `compare` adds `ga4_purchases`, `ga4_revenue` and `ga4_ratio` (claimed ÷ GA4) per platform.
+    The platform comes from the session source/medium: social sources with any medium; Google
+    only with a paid medium.
+  - Totals add `ga4_purchases` and `overclaim_vs_ga4`.
+  - The daily digest lists claims vs GA4 for the last 7 days and flags any platform claiming
+    more than 1.5× what GA4 saw.
+- **Personal data is never stored.** Columns whose header looks like a name, phone, e-mail,
+  address, ID or bank account are dropped from `raw` (e.g. Jood's اسم المتبرع، رقم الجوال،
+  الحساب البنكي).
 
 ## §6 App tables (schema `app`, `app/models/app_models.py`)
     users(id, email UNIQUE, password_hash, created_at)

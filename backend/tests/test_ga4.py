@@ -174,3 +174,15 @@ def test_ga4_resync_is_idempotent(auth_client, db, ga4_connection):
     assert db.scalar(select(func.count()).select_from(FactWebPerformance)) == 1
     # raw is append-only -> two rows after two syncs
     assert db.scalar(select(func.count()).select_from(RawGA4Report)) == 2
+
+
+def test_ga4_requests_and_normalizes_purchases():
+    from app.connectors.ga4.connector import METRICS
+
+    assert METRICS[-1] == "ecommercePurchases"
+    raw = {"dimensionValues": [{"value": "20261006"}, {"value": "snapchat"},
+                               {"value": "paid_social"}, {"value": "c"}],
+           "metricValues": [{"value": "10"}, {"value": "8"}, {"value": "2"},
+                            {"value": "150.5"}, {"value": "2"}]}
+    n = GA4Connector().normalize_insight(raw, "none")
+    assert n["purchases"] == 2 and n["revenue"] == 150.5

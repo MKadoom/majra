@@ -414,6 +414,7 @@ def _handle_web_performance(db, conn, connector, job, accounts, tokens) -> dict:
                     users=norm.get("users", 0),
                     conversions=norm.get("conversions", 0),
                     revenue=norm.get("revenue", 0),
+                    purchases=norm.get("purchases", 0),
                 )
             )
             fetched += 1

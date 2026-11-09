@@ -78,6 +78,28 @@ PLATFORM_ALIASES: dict[str, list[str]] = {
 }
 PLATFORMS = list(PLATFORM_ALIASES) + ["unattributed"]
 
+# Personal data is never stored: columns whose header looks like a donor's name,
+# phone, e-mail, address, national ID or bank details are dropped from `raw`
+# (the order id, amount, date, project and channel are all majra needs).
+PII_HEADER = re.compile(
+    r"(name|phone|mobile|email|e-mail|address|iban|bank|account|national|identity|"
+    r"اسم|جوال|هاتف|موبايل|بريد|ايميل|إيميل|عنوان المتبرع|العنوان|الحساب|بنك|آيبان|ايبان|"
+    r"هوية|سجل)", re.I)
+# ...but these fields are about the project/channel, not the person.
+PII_ALLOW = {"عنوان المشروع", "project title", "project"}
+
+
+def strip_pii(row: dict) -> dict:
+    out = {}
+    for k, v in row.items():
+        if not k:
+            continue
+        nk = _norm_header(k)
+        if nk not in PII_ALLOW and PII_HEADER.search(nk):
+            continue
+        out[k] = v.isoformat() if isinstance(v, (date, datetime)) else v
+    return out
+
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹٫٬", "01234567890123456789.,")
 
 
@@ -290,8 +312,7 @@ def normalise_rows(rows: list[dict], mapping: dict, link_platforms: dict | None,
             "utm_campaign": (str(get(r, "utm_campaign"))[:200]
                              if get(r, "utm_campaign") else None),
             "link": link,
-            "raw": {k: (v.isoformat() if isinstance(v, (date, datetime)) else v)
-                    for k, v in r.items() if k},
+            "raw": strip_pii(r),
         })
     return good, bad, statuses
 
@@ -371,6 +392,55 @@ def donation_summary(db: Session, user_id: int, date_from: date, date_to: date,
     return {"currency": rep, "by_platform": out, "warnings": warnings}
 
 
+PAID_MEDIUMS = {"cpc", "ppc", "paid", "paidsearch", "paid search", "paid social",
+                "paidsocial", "paid_social", "cpm", "display", "ads", "ad", "paid-social"}
+_HOST_PLATFORM = (("facebook", "meta"), ("instagram", "meta"), ("fb.", "meta"),
+                  ("snapchat", "snapchat"), ("tiktok", "tiktok"), ("whatsapp", "whatsapp"),
+                  ("wa.me", "whatsapp"))
+
+
+def ga4_platform(source: str | None, medium: str | None) -> str | None:
+    """The ad platform a GA4 session source/medium belongs to, or None.
+    Google needs a paid medium (organic search isn't Google Ads); social
+    sources count with any medium, since that's how platform links arrive."""
+    if not source:
+        return None
+    p = platform_of(source)
+    if p is None:
+        s = source.lower()
+        p = next((plat for host, plat in _HOST_PLATFORM if host in s), None)
+    if p == "google_ads" and _norm_header(medium or "") not in PAID_MEDIUMS:
+        return None
+    return p
+
+
+def ga4_by_platform(db: Session, user_id: int, date_from: date, date_to: date) -> dict:
+    """GA4 purchases and revenue per ad platform (from session source/medium)."""
+    from app.models import Account, Connection
+    from app.models import FactWebPerformance as W
+
+    rows = db.execute(
+        select(W.source, W.medium, func.sum(W.purchases), func.sum(W.revenue))
+        .join(Account, Account.id == W.account_id)
+        .join(Connection, Connection.id == Account.connection_id)
+        .where(Connection.user_id == user_id, Connection.deleted_at.is_(None),
+               W.date >= date_from, W.date <= date_to)
+        .group_by(W.source, W.medium)
+    ).all()
+    out: dict[str, dict] = {}
+    total = {"purchases": 0, "revenue": 0.0}
+    for source, medium, n, rev in rows:
+        total["purchases"] += int(n or 0)
+        total["revenue"] += float(rev or 0)
+        p = ga4_platform(source, medium) or "other"
+        d = out.setdefault(p, {"purchases": 0, "revenue": 0.0})
+        d["purchases"] += int(n or 0)
+        d["revenue"] = round(d["revenue"] + float(rev or 0), 2)
+    return {"by_platform": out, "total": {"purchases": total["purchases"],
+                                          "revenue": round(total["revenue"], 2)},
+            "connected": bool(rows)}
+
+
 def compare(db: Session, user_id: int, date_from: date, date_to: date,
             reporting_currency: str = "SAR") -> dict:
     """Each platform's claimed purchases vs the Jood donations attributed to it.
@@ -388,12 +458,18 @@ def compare(db: Session, user_id: int, date_from: date, date_to: date,
                            reporting_currency=reporting_currency, user_id=user_id,
                            page_size=100)
     claimed = {r["platform"]: r for r in claims["data"]}
+    ga4 = ga4_by_platform(db, user_id, date_from, date_to)
     rows = []
-    for p in sorted(set(claimed) | set(jood["by_platform"])):
+    for p in sorted(set(claimed) | set(jood["by_platform"])
+                    | {k for k in ga4["by_platform"] if k != "other"}):
         c = claimed.get(p, {})
         j = jood["by_platform"].get(p, {"orders": 0, "amount": 0.0})
+        g = ga4["by_platform"].get(p, {"purchases": 0, "revenue": 0.0})
         cp = int(c.get("purchases") or 0)
         rows.append({
+            "ga4_purchases": g["purchases"],
+            "ga4_revenue": g["revenue"],
+            "ga4_ratio": round(cp / g["purchases"], 2) if g["purchases"] else None,
             "platform": p,
             "claimed_purchases": cp,
             "claimed_value": round(float(c.get("purchase_value") or 0), 2),
@@ -413,8 +489,12 @@ def compare(db: Session, user_id: int, date_from: date, date_to: date,
         DonationOrder.user_id == user_id, DonationOrder.date >= date_from,
         DonationOrder.date <= date_to))
     warnings = list(jood["warnings"]) + list(claims.get("warnings") or [])
+    if not ga4["connected"]:
+        warnings.append("no GA4 data for this range: connect GA4 (service account) so "
+                        "each platform's claims are checked automatically")
     if not imported:
-        warnings.append("no Jood orders imported for this range: import the export first")
+        warnings.append("no Jood orders imported for this range: GA4 is the reference; "
+                        "importing Jood's export adds the exact real total")
     return {
         "date_from": date_from.isoformat(), "date_to": date_to.isoformat(),
         "currency": jood["currency"],
@@ -426,6 +506,10 @@ def compare(db: Session, user_id: int, date_from: date, date_to: date,
                 "orders", 0),
             "claimed_purchases_all_platforms": claimed_total,
             "overclaim": (round(claimed_total / total_orders, 2) if total_orders else None),
+            "ga4_purchases": ga4["total"]["purchases"],
+            "ga4_revenue": ga4["total"]["revenue"],
+            "overclaim_vs_ga4": (round(claimed_total / ga4["total"]["purchases"], 2)
+                                 if ga4["total"]["purchases"] else None),
         },
         "warnings": warnings,
     }

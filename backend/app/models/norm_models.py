@@ -184,6 +184,7 @@ class FactWebPerformance(Base):
     conversions: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
     # Revenue is in the GA4 property's currency (ISO mapping is a v2 concern).
     revenue: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
+    purchases: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
 
 
 class FactSocialPerformance(Base):
