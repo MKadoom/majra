@@ -32,6 +32,7 @@ GROUPABLE = {
     "adset": Adset.name.label("adset"),
     "ad": Ad.name.label("ad"),
     "currency": F.currency.label("currency"),
+    "cost_source": F.cost_source.label("cost_source"),
 }
 
 SUMS = {
@@ -88,6 +89,25 @@ def _scoped(stmt, date_from, date_to, breakdown, platforms, account_ids,
     if campaign_ids:
         stmt = stmt.where(F.campaign_id.in_(campaign_ids))
     return stmt
+
+
+def _cost_source_warnings(db: Session, *scope) -> list[str]:
+    """Spend that isn't a billed figure must never pass silently (T6)."""
+    rows = db.execute(
+        _scoped(select(F.platform, F.cost_source, func.count(func.distinct(F.date))),
+                *scope)
+        .where(F.cost_source.in_(("estimate", "missing")))
+        .group_by(F.platform, F.cost_source)
+        .order_by(F.platform, F.cost_source)
+    ).all()
+    out = []
+    for platform, source, days in rows:
+        if source == "estimate":
+            out.append(f"{platform} spend is estimated (delivered × configured price) "
+                       f"on {days} day(s) — Meta returned no cost for them")
+        else:
+            out.append(f"{platform} spend is unknown on {days} day(s) — counted as 0")
+    return out
 
 
 def fx_rates(db: Session) -> dict[str, float]:
@@ -158,6 +178,8 @@ def query_metrics(
         warnings += [f"no FX rate for {c} — its spend and value are excluded"
                      for c in unrated]
     warnings += _coverage_warnings(db, date_from, date_to, platforms)
+    warnings += _cost_source_warnings(db, date_from, date_to, breakdown, platforms,
+                                      account_ids, campaign_ids, user_id)
 
     cols = [GROUPABLE[g] for g in group_by]
     aggs = [expr.label(name) for name, expr in sums.items()]
