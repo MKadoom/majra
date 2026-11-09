@@ -270,6 +270,18 @@ grouping); the MCP `get_ad_metrics` tool returns the field as-is.
    `messages_sent` and `impressions` → `messages_delivered` (Meta accounts
    relabelled `whatsapp` via `platform_override` keep their real purchases).
 
+**Tracking changes** — `app.tracking_changes(changed_on, platform, metric,
+note)` (migration 0022) records days a metric's *meaning* changed: pixel
+routing, deduplication or sender changes. `platform` NULL means every
+platform. When a request range straddles one (`date_from < changed_on <=
+date_to`, platform filter honoured), `/metrics` (and so `/donations/compare`)
+adds a `warnings[]` entry: days before and after are not like for like.
+`GET /tracking-changes` lists them; `POST` / `DELETE /tracking-changes` are
+owner-only. 0022 seeds the 2026-11-09 clean-up: Google Ads Purchase deduped by
+transaction ID (GTM v17); Stape Snapchat gateway removed (Jood Snap CAPI is the
+single server sender); Jood "pixel events only for ad-link visits" on for
+Meta, Snapchat and TikTok (≈13:40 Riyadh).
+
 **Spend provenance (T6)** — `fact_ad_performance.cost_source`
 (`platform | pricing_analytics | estimate | missing`, migration 0018; pre-T6
 WhatsApp rows are marked `estimate` until re-synced). `/metrics` adds a

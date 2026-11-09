@@ -15,7 +15,16 @@ from datetime import date
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.models import Account, Ad, Adset, Campaign, Connection, FxRate, MetricCoverage
+from app.models import (
+    Account,
+    Ad,
+    Adset,
+    Campaign,
+    Connection,
+    FxRate,
+    MetricCoverage,
+    TrackingChange,
+)
 from app.models import FactAdPerformance as F
 
 DEFAULT_CURRENCY = "SAR"
@@ -155,6 +164,23 @@ def _coverage_warnings(db: Session, date_from: date, date_to: date,
     return out
 
 
+def _tracking_change_warnings(db: Session, date_from: date, date_to: date,
+                              platforms: list[str] | None) -> list[str]:
+    """A range that straddles a tracking change compares numbers that don't mean
+    the same thing on both sides of it (SPEC §5a)."""
+    out = []
+    q = select(TrackingChange).where(TrackingChange.changed_on > date_from,
+                                     TrackingChange.changed_on <= date_to)
+    for c in db.scalars(q.order_by(TrackingChange.changed_on, TrackingChange.platform,
+                                   TrackingChange.id)):
+        if platforms and c.platform and c.platform not in platforms:
+            continue
+        who = c.platform or "all platforms"
+        out.append(f"{who} {c.metric} tracking changed on {c.changed_on.isoformat()}: "
+                   f"{c.note} — days before and after are not like for like")
+    return out
+
+
 def query_metrics(
     db: Session,
     date_from: date,
@@ -201,6 +227,7 @@ def query_metrics(
         warnings += [f"no FX rate for {c} — its spend and value are excluded"
                      for c in unrated]
     warnings += _coverage_warnings(db, date_from, date_to, platforms)
+    warnings += _tracking_change_warnings(db, date_from, date_to, platforms)
     warnings += _cost_source_warnings(db, date_from, date_to, breakdown, platforms,
                                       account_ids, campaign_ids, user_id)
     # Rows grouped by platform are each one platform's own claim; any other

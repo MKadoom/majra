@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -99,6 +100,25 @@ class SyncJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     connection: Mapped["Connection"] = relationship()
+
+
+class TrackingChange(Base):
+    """A day the *meaning* of a platform's tracked metric changed (SPEC §5a):
+    pixel routing, dedup or sender changes. Numbers before and after are not
+    like for like, so /metrics warns when a range straddles `changed_on`.
+    `platform` NULL means every platform."""
+
+    __tablename__ = "tracking_changes"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    changed_on: Mapped[object] = mapped_column(Date, index=True)
+    platform: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    metric: Mapped[str] = mapped_column(String(50), default="purchases")
+    note: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
 
 
 class AccountSyncState(Base):
