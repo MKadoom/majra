@@ -219,8 +219,21 @@ Params: `date_from`, `date_to` (required); `breakdown` (default `none`);
 Response: `{data: [{...group keys, spend, impressions, clicks, conversions,
 purchase_value, conversion_value (alias), video_views, leads, purchases,
 messages_sent, messages_delivered, ctr, cpc, cpm, cpa, roas}], page,
-page_size, total, currency, warnings[]}`. `total` is the number of groups (1
-when ungrouped). Derived metrics are null when their denominator is zero.
+page_size, total, currency, warnings[], purchase_overlap}`. `total` is the
+number of groups (1 when ungrouped). Derived metrics are null when their
+denominator is zero.
+
+**Cross-platform purchase overlap.** Each platform counts the purchases
+(donations) it attributes to itself, so one donation can be counted once per
+platform; a sum across platforms is never a de-duplicated count. When
+`platform` is not in `group_by` and more than one platform in scope (after
+every filter, including `platform[]`) has `purchases > 0`, the response sets
+`purchase_overlap = {platforms[], metrics[] (purchases, purchase_value,
+conversion_value, cpa, roas), note}` and appends `note` to `warnings[]`;
+otherwise `purchase_overlap` is null. Explore shows it as a translated note
+under the KPI cards; `GET /exports?total=true` (ads) adds a `note` column
+whose only value is on the Total row (the Total row spans platforms in every
+grouping); the MCP `get_ad_metrics` tool returns the field as-is.
 
 ## §5a Metric semantics and currency (T5 — approved 2026-11-03)
 

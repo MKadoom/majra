@@ -147,6 +147,8 @@ const en: Dict = {
     "This platform has no data yet for the end of the selected range — its sync has not caught up, so the figure is incomplete rather than low.",
   "explore.zeroPlatformHint":
     "A platform showing zero returned data for this range but no spend — it ran no paid delivery, or its sync has not caught up yet.",
+  "explore.overlapNote":
+    "{metrics} add up what each platform claims for itself ({platforms}). One donation can be counted once per platform, so these totals are not a de-duplicated donation count.",
   "explore.breakdown": "Breakdown",
   "explore.groupBy": "Group by",
   "explore.noData": "No data in this range.",
@@ -491,6 +493,8 @@ const ar: Dict = {
     "لا توجد بيانات لهذه المنصة حتى نهاية الفترة المحددة — لم تكتمل مزامنتها بعد، لذا الرقم ناقص وليس منخفضاً.",
   "explore.zeroPlatformHint":
     "المنصة التي تظهر صفراً أعادت بيانات لهذه الفترة لكن دون إنفاق — إما لم تُشغّل إعلانات مدفوعة، أو أن مزامنتها لم تكتمل بعد.",
+  "explore.overlapNote":
+    "{metrics}: هذه المجاميع تجمع ما تنسبه كل منصة لنفسها ({platforms}). قد يُحتسب التبرع الواحد مرة لكل منصة، لذا فهي ليست عدداً للتبرعات بلا تكرار.",
   "explore.breakdown": "التفصيل",
   "explore.groupBy": "التجميع حسب",
   "explore.noData": "لا توجد بيانات في هذه الفترة.",

@@ -70,6 +70,16 @@ def total_row(rows: list[dict]) -> dict | None:
     return t
 
 
+def with_note(rows: list[dict], note: str) -> list[dict]:
+    """Add a `note` column (last), empty on every row except the final one —
+    the Total row — so the caveat travels with the figure it qualifies in every
+    format (CSV/xlsx header, JSON key, parquet string column)."""
+    out = [{**r, "note": None} for r in rows]
+    if out:
+        out[-1]["note"] = note
+    return out
+
+
 def stream_csv(rows: list[dict]) -> Iterator[str]:
     cols = _columns(rows)
     if not cols:

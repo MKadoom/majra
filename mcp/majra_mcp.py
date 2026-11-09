@@ -122,6 +122,14 @@ def get_ad_metrics(
 
     Tip: to answer "which channel spent the most", pass group_by=["platform"]
     and sort="-spend" rather than pulling every row and summing them yourself.
+
+    Purchases are NOT de-duplicated across platforms: each platform counts the
+    donations it attributes to itself, so one donation can be counted once per
+    platform. When the response's `purchase_overlap` field is set (it lists the
+    platforms and metrics affected: purchases, purchase/conversion value, CPA,
+    ROAS), say so in the answer and never present that total as a donation
+    count. For real donation counts use the store's own orders; for per-channel
+    figures pass group_by=["platform"].
     """
     start, end = _default_range(date_from, date_to)
     return _get(
