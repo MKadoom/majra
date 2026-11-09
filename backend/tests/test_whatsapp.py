@@ -1,6 +1,6 @@
 """WhatsApp Business Management connector: maps account-level messaging
 analytics (messages delivered/sent) onto the ad_performance shape
-(delivered→impressions, sent→purchases)."""
+(delivered→messages_delivered, sent→messages_sent; never purchases/impressions)."""
 import httpx
 import pytest
 import respx
@@ -37,8 +37,10 @@ def test_whatsapp_normalize_insight():
     assert n["date"] == "2026-01-01"
     assert n["campaign_external_id"] == "wa-messages-498954053303405"
     assert n["campaign_name"] == "WhatsApp Marketing Messages"
-    assert n["impressions"] == 950          # delivered
-    assert n["purchases"] == 1000           # sent
+    assert n["messages_delivered"] == 950
+    assert n["messages_sent"] == 1000
+    # SPEC §5a: messages are not purchases or ad impressions
+    assert n["purchases"] == 0 and n["impressions"] == 0
     # priced at the default 0.21 SAR / delivered (950 * 0.21)
     assert n["spend"] == 199.5 and n["adset_external_id"] is None
 
@@ -64,4 +66,4 @@ def test_whatsapp_fetch_insights_reads_messaging_analytics():
     assert len(rows) == 2
     assert [r["delivered"] for r in rows] == [480, 295]
     norm = _c().normalize_insight(rows[0], "none")
-    assert norm["impressions"] == 480 and norm["campaign_name"] == "WhatsApp Marketing Messages"
+    assert norm["messages_delivered"] == 480 and norm["campaign_name"] == "WhatsApp Marketing Messages"

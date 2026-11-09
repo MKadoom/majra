@@ -160,13 +160,17 @@ class WhatsAppConnector(BaseConnector):
             "breakdown": breakdown,
             "country": None, "device": None, "age": None, "gender": None, "placement": None,
             "spend": spend,                                  # delivered * price
-            "impressions": delivered,                        # messages delivered
+            # Messages are not ad impressions or purchases (SPEC §5a): they get
+            # their own fields so they can't inflate CPM or the purchase count.
+            "impressions": 0,
             "clicks": 0,
             "conversions": 0.0,
             "conversion_value": 0.0,
             "video_views": 0,
             "leads": 0,
-            "purchases": int(raw.get("sent") or 0),           # messages sent
+            "purchases": 0,
+            "messages_sent": int(raw.get("sent") or 0),
+            "messages_delivered": delivered,
         }
 
     # ------------------------------------------------------------- http

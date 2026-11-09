@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import FxRate
+from app.services.metrics import PEGGED_RATE_TO_USD
 
 
 def refresh_fx_rates(db: Session, url: str | None = None) -> int:
@@ -35,6 +36,8 @@ def refresh_fx_rates(db: Session, url: str | None = None) -> int:
         if per_usd <= 0:
             continue
         rate_to_usd = 1.0 / per_usd
+        if ccy.upper() in PEGGED_RATE_TO_USD:   # e.g. SAR: keep the peg, not a quote
+            rate_to_usd = PEGGED_RATE_TO_USD[ccy.upper()]
         row = db.scalar(select(FxRate).where(FxRate.currency == ccy))
         if row is None:
             db.add(FxRate(currency=ccy, rate_to_usd=rate_to_usd))

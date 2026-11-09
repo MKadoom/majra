@@ -27,7 +27,7 @@ from app.services import exports
 from app.services.anomalies import anomaly_report
 from app.services.datasets import run_dataset_query
 from app.services.freshness import freshness_report
-from app.services.metrics import query_metrics
+from app.services.metrics import fx_rates, query_metrics
 from app.services.pacing import pacing_report
 from app.services.social_metrics import query_social_metrics
 from app.services.web_metrics import query_web_metrics
@@ -223,35 +223,41 @@ def metrics(
     page: int = 1,
     page_size: int = Query(100, le=1000),
     currency: str | None = Query(
-        None, description="Blend spend/value into this reporting currency (ISO 4217)"
+        None, description="Reporting currency (ISO 4217) for spend/value. Default "
+        "SAR. Money is never summed across currencies unconverted; use "
+        "group_by=currency for per-currency native totals."
     ),
     user: User = Depends(get_read_principal),
     db: Session = Depends(get_db),
 ):
     if breakdown not in BREAKDOWN_SETS:
         raise HTTPException(422, f"breakdown must be one of {BREAKDOWN_SETS}")
-    return query_metrics(
-        db,
-        date_from=date_from,
-        date_to=date_to,
-        breakdown=breakdown,
-        platforms=platform,
-        account_ids=account_id,
-        campaign_ids=campaign_id,
-        group_by=group_by,
-        sort=sort,
-        page=page,
-        page_size=page_size,
-        reporting_currency=currency,
-        user_id=user.id,
-    )
+    try:
+        return query_metrics(
+            db,
+            date_from=date_from,
+            date_to=date_to,
+            breakdown=breakdown,
+            platforms=platform,
+            account_ids=account_id,
+            campaign_ids=campaign_id,
+            group_by=group_by,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+            reporting_currency=currency,
+            user_id=user.id,
+        )
+    except ValueError as exc:  # e.g. no FX rate for the requested currency
+        raise HTTPException(422, str(exc)) from exc
+
 
 
 # ------------------------------------------------------- card funding ledger
 class CardChargeIn(BaseModel):
     date: date
     amount: float = Field(gt=0)
-    currency: str = Field("USD", min_length=3, max_length=8)
+    currency: str = Field("SAR", min_length=3, max_length=8)
     note: str | None = Field(None, max_length=300)
 
 
@@ -307,7 +313,7 @@ def _month_start(d: date, months_back: int) -> date:
 
 @router.get("/funding")
 def funding(
-    currency: str = Query("USD", description="Reporting currency (ISO 4217)"),
+    currency: str = Query("SAR", description="Reporting currency (ISO 4217)"),
     days: int = Query(30, ge=1, le=366),
     date_from: date | None = Query(None, description="Daily window start (overrides days)"),
     date_to: date | None = Query(None, description="Daily window end (overrides days)"),
@@ -321,13 +327,19 @@ def funding(
     split and net = topped up − spent). The daily window is an explicit
     `date_from`/`date_to` range when given, otherwise the last `days`."""
     rep = currency.upper()
-    rates = {r.currency: float(r.rate_to_usd) for r in db.scalars(select(FxRate))}
-    rates.setdefault("USD", 1.0)
-    r_rep = rates.get(rep, 1.0)
+    rates = fx_rates(db)
+    r_rep = rates.get(rep)
+    if not r_rep:
+        raise HTTPException(422, f"no FX rate for reporting currency {rep}")
+    unrated: set[str] = set()
 
     def to_rep(amount: float, ccy: str | None) -> float:
-        r_from = rates.get((ccy or "USD").upper())
-        return amount * (r_from / r_rep) if r_from and r_rep else amount
+        # SPEC §5a: a currency without a rate is excluded, never taken at 1.0.
+        r_from = rates.get((ccy or "").upper())
+        if not r_from:
+            unrated.add(ccy or "unknown")
+            return 0.0
+        return amount * (r_from / r_rep)
 
     charges = list(db.scalars(
         select(CardCharge).where(CardCharge.user_id == user.id)))
@@ -397,6 +409,8 @@ def funding(
 
     return {
         "currency": rep,
+        "warnings": [f"no FX rate for {c} — those card charges are excluded"
+                     for c in sorted(unrated)],
         # All-time card-coverage figures (the prepaid balance is inherently
         # cumulative — every top-up minus every dirham spent).
         "total_charged": round(total_charged, 2),
@@ -458,7 +472,7 @@ class BudgetIn(BaseModel):
     amount_monthly: float = Field(gt=0)
     platform: str | None = None       # None = all platforms
     account_id: int | None = None     # None = all accounts in scope
-    currency: str = Field("USD", min_length=3, max_length=8)
+    currency: str = Field("SAR", min_length=3, max_length=8)
     enabled: bool = True
 
 
