@@ -6,7 +6,7 @@ import pytest
 import respx
 
 from app.models import Account, Connection, FactAdPerformance, MetricCoverage
-from app.services.metrics import query_metrics
+from app.services.metrics import OVERLAP_NOTE, query_metrics
 
 
 @pytest.fixture
@@ -51,7 +51,8 @@ def test_default_is_sar_and_unrated_currency_is_excluded_with_warning(db, setup)
     row = res["data"][0]
     # 375 SAR + 100 USD*3.75 + 21 SAR; the EGP account has no rate → excluded
     assert row["spend"] == 375 + 375 + 21
-    assert res["warnings"] == ["no FX rate for EGP — its spend and value are excluded"]
+    assert res["warnings"] == ["no FX rate for EGP — its spend and value are excluded",
+                               OVERLAP_NOTE]
 
 
 def test_roas_and_cpa_use_purchases_not_conversions(db, setup):
@@ -71,7 +72,9 @@ def test_whatsapp_messages_are_separate_from_purchases(db, setup):
 
 def test_group_by_currency_is_native_and_unconverted(db, setup):
     res = query_metrics(db, **P, group_by=["currency"], user_id=setup)
-    assert res["currency"] is None and res["warnings"] == []
+    # No FX warning (nothing is converted); the per-currency rows still sum
+    # several platforms' purchase claims, so the overlap note stays.
+    assert res["currency"] is None and res["warnings"] == [OVERLAP_NOTE]
     by = {r["currency"]: r["spend"] for r in res["data"]}
     assert by == {"SAR": 396.0, "USD": 100.0, "EGP": 999.0}
 
@@ -156,3 +159,106 @@ def test_estimated_or_missing_spend_is_warned_and_groupable(db, setup):
     assert by == {"estimate": 21.0, "missing": 0.0}
     clean = query_metrics(db, **P, platforms=["meta"], user_id=setup)
     assert not any("estimated" in w for w in clean["warnings"])
+
+
+# ------------------------------------------- cross-platform purchase overlap
+# Fixture: meta (5), snapchat (1) and tiktok (3) all report purchases;
+# whatsapp reports none. Each platform claims the same donation for itself, so
+# any total spanning >1 of them is not a de-duplicated donation count.
+
+def test_all_platform_total_flags_purchase_overlap(db, setup):
+    res = query_metrics(db, **P, user_id=setup)
+    assert res["purchase_overlap"] == {
+        "platforms": ["meta", "snapchat", "tiktok"],
+        "metrics": ["purchases", "purchase_value", "conversion_value", "cpa", "roas"],
+        "note": OVERLAP_NOTE,
+    }
+    assert res["warnings"].count(OVERLAP_NOTE) == 1
+    # A time series without a platform split sums claims per day: still flagged.
+    by_day = query_metrics(db, **P, group_by=["date"], user_id=setup)
+    assert by_day["purchase_overlap"]["platforms"] == ["meta", "snapchat", "tiktok"]
+
+
+def test_group_by_platform_is_not_flagged(db, setup):
+    res = query_metrics(db, **P, group_by=["platform"], user_id=setup)
+    assert res["purchase_overlap"] is None
+    assert OVERLAP_NOTE not in res["warnings"]
+    both = query_metrics(db, **P, group_by=["platform", "date"], user_id=setup)
+    assert both["purchase_overlap"] is None
+
+
+def test_single_platform_or_single_purchasing_platform_is_not_flagged(db, setup):
+    one = query_metrics(db, **P, platforms=["meta"], user_id=setup)
+    assert one["purchase_overlap"] is None and OVERLAP_NOTE not in one["warnings"]
+    # Two platforms, but only one of them reports purchases (WhatsApp: 0).
+    wa = query_metrics(db, **P, platforms=["meta", "whatsapp"], user_id=setup)
+    assert wa["purchase_overlap"] is None
+
+
+def test_multi_platform_filter_is_flagged(db, setup):
+    """The platform filter narrows the check, it doesn't switch it off: a
+    meta + snapchat total still adds two platforms' claims."""
+    res = query_metrics(db, **P, platforms=["meta", "snapchat"], user_id=setup)
+    assert res["purchase_overlap"]["platforms"] == ["meta", "snapchat"]
+
+
+def test_overlap_respects_tenant_and_date_scope(db, setup):
+    # Outside the range nothing reports purchases.
+    res = query_metrics(db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 30),
+                        user_id=setup)
+    assert res["purchase_overlap"] is None
+    # Another user's view of the same table sees none of these facts.
+    other = query_metrics(db, **P, user_id=setup + 999)
+    assert other["purchase_overlap"] is None
+
+
+def test_api_and_api_key_surface_carry_overlap_field(client, auth_client, setup):
+    """The MCP tool get_ad_metrics returns /v1/metrics (= /metrics with an API
+    key) verbatim, so the field must be on that response."""
+    key = auth_client.post("/api-keys", json={"name": "mcp"}).json()["key"]
+    params = {"date_from": "2026-10-01", "date_to": "2026-10-31"}
+    body = client.get("/metrics", params=params,
+                      headers={"Authorization": f"Bearer {key}"}).json()
+    assert body["purchase_overlap"]["platforms"] == ["meta", "snapchat", "tiktok"]
+    assert OVERLAP_NOTE in body["warnings"]
+    split = auth_client.get("/metrics", params={**params, "group_by": "platform"}).json()
+    assert split["purchase_overlap"] is None
+
+
+def test_export_total_row_carries_overlap_note(auth_client, setup):
+    import csv
+    import io
+
+    from openpyxl import load_workbook
+
+    base = {"dataset": "ads", "date_from": "2026-10-01", "date_to": "2026-10-31",
+            "group_by": "platform", "total": "true"}
+    rows = list(csv.DictReader(io.StringIO(
+        auth_client.get("/exports", params={**base, "format": "csv"}).text)))
+    assert rows[-1]["platform"] == "Total" and rows[-1]["note"] == OVERLAP_NOTE
+    assert all(r["note"] == "" for r in rows[:-1])
+
+    sheet = load_workbook(io.BytesIO(
+        auth_client.get("/exports", params={**base, "format": "xlsx"}).content)).active
+    values = list(sheet.values)
+    assert values[0][-1] == "note"
+    assert values[-1][0] == "Total" and values[-1][-1] == OVERLAP_NOTE
+
+    js = auth_client.get("/exports", params={**base, "format": "json"}).json()["data"]
+    assert js[-1]["note"] == OVERLAP_NOTE and js[0]["note"] is None
+
+
+def test_export_without_overlap_has_no_note_column(auth_client, setup):
+    import csv
+    import io
+
+    base = {"dataset": "ads", "date_from": "2026-10-01", "date_to": "2026-10-31",
+            "group_by": "platform", "format": "csv"}
+    # No Total row requested: plain data stays clean.
+    plain = auth_client.get("/exports", params=base).text
+    assert "note" not in plain.splitlines()[0].split(",")
+    # Total over one platform: no cross-platform sum, no note.
+    single = auth_client.get("/exports", params={**base, "total": "true",
+                                                 "platform": "meta"}).text
+    rows = list(csv.DictReader(io.StringIO(single)))
+    assert rows[-1]["platform"] == "Total" and "note" not in rows[-1]

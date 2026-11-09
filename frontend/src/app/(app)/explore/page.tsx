@@ -37,7 +37,13 @@ import {
 } from "@/lib/api";
 import { daysAgo, isoDate, pctDelta, prevWindow } from "@/lib/format";
 import { useLocale } from "@/lib/locale";
-import type { GtmSnapshot, MetricPage, MetricRow, SavedView } from "@/lib/types";
+import type {
+  GtmSnapshot,
+  MetricPage,
+  MetricRow,
+  PurchaseOverlap,
+  SavedView,
+} from "@/lib/types";
 
 const DATASETS: Dataset[] = ["ads", "web", "social", "tags"];
 
@@ -91,6 +97,7 @@ export default function ExplorePage() {
   // native per-currency totals, group by "currency" instead.
   const [currency, setCurrency] = useState("SAR");
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [overlap, setOverlap] = useState<PurchaseOverlap | null>(null);
   const [fxCurrencies, setFxCurrencies] = useState<string[]>([]);
   const [views, setViews] = useState<SavedView[]>([]);
 
@@ -175,7 +182,11 @@ export default function ExplorePage() {
       ]);
 
       setTotals(totalsRes.data[0] ?? null);
-      setWarnings(totalsRes.warnings ?? []);
+      // The overlap note gets its own translated line under the KPI cards, so
+      // drop its English copy from the generic warnings list.
+      const ov = totalsRes.purchase_overlap ?? null;
+      setOverlap(ov);
+      setWarnings((totalsRes.warnings ?? []).filter((w) => w !== ov?.note));
       setSeries(seriesRes.data);
       setTable(tableRes.data);
 
@@ -506,6 +517,25 @@ export default function ExplorePage() {
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* Each platform claims the same donation for itself, so the
+                  blended purchases / value / CPA / ROAS above are not a
+                  de-duplicated donation count (SPEC §5). */}
+              {dataset === "ads" && totals && overlap && (
+                <p
+                  role="note"
+                  className="rounded-lg border border-warn/40 bg-warn/10 px-4 py-2 text-sm text-warn"
+                >
+                  {t("explore.overlapNote", {
+                    metrics: ["purchases", "purchase_value", "cpa", "roas"]
+                      .map(mLabel)
+                      .join(dir === "rtl" ? "، " : ", "),
+                    platforms: overlap.platforms
+                      .map(pName)
+                      .join(dir === "rtl" ? "، " : ", "),
+                  })}
+                </p>
               )}
             </>
           )}

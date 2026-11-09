@@ -12,7 +12,7 @@ to your own majra over HTTPS.
 
 | Tool | Answers |
 |---|---|
-| `get_ad_metrics` | Paid performance blended across Meta, Google Ads, TikTok, Snapchat — spend, impressions, clicks, conversions, value. Group by platform, campaign or date. |
+| `get_ad_metrics` | Paid performance blended across Meta, Google Ads, TikTok, Snapchat — spend, impressions, clicks, conversions, value. Group by platform, campaign or date. A cross-platform purchases total is not de-duplicated (each platform claims the same donation); `purchase_overlap` flags it. |
 | `get_web_metrics` | GA4 sessions/users/conversions by source, medium, campaign. |
 | `get_social_metrics` | Organic Facebook Pages + Instagram reach and engagement. |
 | `list_accounts` | Which accounts and platforms are actually connected. |

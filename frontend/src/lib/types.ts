@@ -158,6 +158,15 @@ export type MetricPage = {
   total: number;
   currency?: string | null;
   warnings?: string[];
+  /** Set when the figures sum more than one platform's purchase claims (SPEC §5). */
+  purchase_overlap?: PurchaseOverlap | null;
+};
+
+/** Each platform claims the same donation, so a cross-platform sum overcounts. */
+export type PurchaseOverlap = {
+  platforms: string[];
+  metrics: string[];
+  note: string;
 };
 
 export type GtmResource = {

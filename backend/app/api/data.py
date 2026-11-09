@@ -27,7 +27,7 @@ from app.services import exports
 from app.services.anomalies import anomaly_report
 from app.services.datasets import run_dataset_query
 from app.services.freshness import freshness_report
-from app.services.metrics import fx_rates, query_metrics
+from app.services.metrics import fx_rates, purchase_overlap, query_metrics
 from app.services.pacing import pacing_report
 from app.services.social_metrics import query_social_metrics
 from app.services.web_metrics import query_web_metrics
@@ -808,6 +808,14 @@ def export(
         tr = exports.total_row(rows)
         if tr is not None:
             rows = [*rows, tr]
+            # The Total row sums every row, so it spans platforms whatever the
+            # grouping: flag it when more than one platform claims purchases.
+            overlap = dataset == "ads" and purchase_overlap(
+                db, date_from, date_to, breakdown, platform, account_id,
+                campaign_id, user.id,
+            )
+            if overlap:
+                rows = exports.with_note(rows, overlap["note"])
     name = exports.filename(dataset, date_from, date_to, format)
     headers = {"content-disposition": f'attachment; filename="{name}"'}
 

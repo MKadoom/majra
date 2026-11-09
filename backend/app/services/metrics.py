@@ -110,6 +110,29 @@ def _cost_source_warnings(db: Session, *scope) -> list[str]:
     return out
 
 
+OVERLAP_METRICS = ("purchases", "purchase_value", "conversion_value", "cpa", "roas")
+OVERLAP_NOTE = (
+    "purchases/value/CPA/ROAS add each platform's own attributed count; "
+    "one donation can appear once per platform"
+)
+
+
+def purchase_overlap(db: Session, *scope) -> dict | None:
+    """Each ad platform attributes the same donation to itself, so a total that
+    spans platforms is NOT a de-duplicated donation count. Returns the overlap
+    descriptor when more than one platform in scope reports purchases, else
+    None. `scope` = _scoped's filter args (the platform filter is honoured, so
+    a single-platform filter never warns)."""
+    found = sorted(
+        p for p in db.scalars(
+            _scoped(select(F.platform).distinct(), *scope).where(F.purchases > 0)
+        ) if p
+    )
+    if len(found) < 2:
+        return None
+    return {"platforms": found, "metrics": list(OVERLAP_METRICS), "note": OVERLAP_NOTE}
+
+
 def fx_rates(db: Session) -> dict[str, float]:
     """rate_to_usd per currency: stored rates, USD = 1, pegged currencies pinned."""
     rates = {r.currency.upper(): float(r.rate_to_usd) for r in db.scalars(select(FxRate))}
@@ -180,6 +203,14 @@ def query_metrics(
     warnings += _coverage_warnings(db, date_from, date_to, platforms)
     warnings += _cost_source_warnings(db, date_from, date_to, breakdown, platforms,
                                       account_ids, campaign_ids, user_id)
+    # Rows grouped by platform are each one platform's own claim; any other
+    # shape (ungrouped, by date, …) sums claims across platforms.
+    overlap = None
+    if "platform" not in group_by:
+        overlap = purchase_overlap(db, date_from, date_to, breakdown, platforms,
+                                   account_ids, campaign_ids, user_id)
+        if overlap:
+            warnings.append(overlap["note"])
 
     cols = [GROUPABLE[g] for g in group_by]
     aggs = [expr.label(name) for name, expr in sums.items()]
@@ -240,4 +271,5 @@ def query_metrics(
         "total": int(total or 0),
         "currency": currency_out,
         "warnings": warnings,
+        "purchase_overlap": overlap,
     }
