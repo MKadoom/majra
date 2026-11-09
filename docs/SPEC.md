@@ -317,6 +317,29 @@ connection 12 on 2026-11-04: PASS on every metric.
   every file through the real connector and asserts the normalized contract
   and that ad-level rows add up to the account totals.
 
+## §5d Jood donations: ground truth vs platform claims
+- `app.donation_orders` (migration 0020) holds each real donation/order from the Jood store
+  export, once: `user_id, source, external_id (unique per user), ordered_at, date (Asia/Riyadh
+  day), amount, currency, status, is_paid, platform, utm_*, link, raw`.
+- `POST /donations/import` (JWT; JSON body `{filename, content | content_base64, mapping?,
+  link_platforms?, default_currency, dry_run=true}`): CSV text or base64 CSV/XLSX.
+  - Arabic and English headers are auto-detected, and `mapping` overrides them.
+  - Arabic-Indic digits and "ر.س"/"SAR" amounts are parsed. Naive dates are read as Riyadh time.
+  - Only paid/completed statuses count; no status means paid.
+  - Platform attribution: an explicit platform column, then `link_platforms` (substring of the
+    Jood per-platform ad link → platform), then `utm_source`, else `unattributed`.
+  - A dry run previews the mapping, statuses, skipped rows and per-platform counts, and writes
+    nothing. Re-import upserts by order id (idempotent).
+- `GET /donations`, `GET /donations/orders` and `GET /donations/compare` are read endpoints
+  (also on `/v1`). `compare` puts each platform's claimed purchases and purchase value (§5a,
+  same reporting currency) next to the paid Jood orders attributed to it, with:
+  - `claim_ratio` = claimed ÷ real;
+  - `cost_per_jood_donation`;
+  - `jood_roas`;
+  - totals, including over-claim across all platforms.
+
+  It is evidence, not a correction: each platform's Ads Manager keeps its own number.
+
 ## §6 App tables (schema `app`, `app/models/app_models.py`)
     users(id, email UNIQUE, password_hash, created_at)
     connections(id, user_id, platform, name, encrypted_tokens BYTEA, status,

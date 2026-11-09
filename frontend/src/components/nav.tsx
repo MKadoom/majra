@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  type LucideIcon,
   Compass,
   FileText,
+  HandCoins,
   Languages,
   LogOut,
   Plug,
@@ -11,7 +13,6 @@ import {
   Target,
   Wallet,
   Waves,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -20,6 +21,7 @@ import { useLocale } from "@/lib/locale";
 
 const LINKS: { href: string; key: string; icon: LucideIcon }[] = [
   { href: "/explore", key: "nav.explore", icon: Compass },
+  { href: "/donations", key: "nav.donations", icon: HandCoins },
   { href: "/funding", key: "nav.funding", icon: Wallet },
   { href: "/budgets", key: "nav.budgets", icon: Target },
   { href: "/connections", key: "nav.connections", icon: Plug },

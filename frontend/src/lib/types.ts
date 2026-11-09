@@ -204,3 +204,46 @@ export type SavedReport = {
   last_status: string | null;
   last_error: string | null;
 };
+
+export type DonationImport = {
+  mapping: Record<string, string>;
+  unmapped_columns: string[];
+  rows_read: number;
+  valid: number;
+  paid: number;
+  inserted: number;
+  updated: number;
+  skipped: { row: number; reason: string }[];
+  skipped_count: number;
+  statuses: Record<string, number>;
+  by_platform: Record<string, { orders: number; amount: number }>;
+  date_range: [string, string] | null;
+  dry_run: boolean;
+};
+
+export type DonationCompareRow = {
+  platform: string;
+  claimed_purchases: number;
+  claimed_value: number;
+  spend: number;
+  jood_orders: number;
+  jood_amount: number;
+  claim_ratio: number | null;
+  cost_per_jood_donation: number | null;
+  jood_roas: number | null;
+};
+
+export type DonationCompare = {
+  date_from: string;
+  date_to: string;
+  currency: string;
+  rows: DonationCompareRow[];
+  totals: {
+    jood_orders: number;
+    jood_amount: number;
+    jood_unattributed_orders: number;
+    claimed_purchases_all_platforms: number;
+    overclaim: number | null;
+  };
+  warnings: string[];
+};
