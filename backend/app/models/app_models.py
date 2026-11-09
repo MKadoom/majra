@@ -99,6 +99,31 @@ class SyncJob(Base):
     connection: Mapped["Connection"] = relationship()
 
 
+class AccountSyncState(Base):
+    """Per-account sync coverage: the contiguous date range this account has been
+    synced through successfully, per breakdown. Unlike the fact-derived
+    watermark, it advances even when an account legitimately had no activity,
+    and it doesn't advance for an account that was skipped — so one healthy
+    account can't hide another account's gap. `backfill_completed_at` is stamped
+    once coverage reaches back to the schedule's backfill horizon."""
+
+    __tablename__ = "account_sync_state"
+    __table_args__ = {"schema": "app"}
+
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("norm.accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    breakdown: Mapped[str] = mapped_column(String(30), primary_key=True)
+    synced_from: Mapped[object] = mapped_column(Date)
+    synced_to: Mapped[object] = mapped_column(Date)
+    backfill_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
     __table_args__ = {"schema": "app"}

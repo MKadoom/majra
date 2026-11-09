@@ -154,17 +154,34 @@ payload jsonb, fetched_at)`. Raw is the re-normalization source of truth and is
 never mutated.
 
 ## §4 Sync semantics (`app/services/sync.py`, `app/services/schedules.py`)
-- Watermark = `max(date)` present per (connection, breakdown set). It is
-  dataset-aware: web (GA4) connections read `fact_web_performance`, ad
-  connections read `fact_ad_performance`. So scheduling works for both.
-- A scheduled run fetches `[watermark - restatement_days, yesterday]`;
+- Watermarks are **per account**: `app.account_sync_state(account_id,
+  breakdown, synced_from, synced_to, backfill_completed_at)` holds the
+  contiguous range each account has synced successfully. A successful job
+  extends it only when the job's range touches or overlaps it (never across a
+  gap); a skipped account doesn't advance. An account the platform answered for
+  with no rows *does* advance (no activity is still "synced"). The connection's
+  watermark is the **oldest** `synced_to` among its (allow-listed) accounts that
+  have coverage; accounts that never synced don't hold it back. With no
+  coverage yet it falls back to `max(date)` of the dataset's fact table (the
+  fact-derived `watermark()` also still drives `/freshness`). Migration 0016
+  seeds coverage from existing facts with the backfill marked complete.
+- A scheduled run fetches `[watermark - restatement_days, yesterday]`, never
+  earlier than `yesterday - backfill_days`, split into ≤30-day jobs;
   `restatement_days` default 7 (platforms restate conversions retroactively).
+  Each tick stamps `backfill_completed_at` on accounts whose `synced_from` has
+  reached that horizon.
 - Write path (`run_sync`): append raw pages, upsert dims, then **delete+insert**
   facts scoped to (this connection's accounts, this breakdown, this date range)
-  in one transaction → every sync is idempotent and safe to retry. A row dated
-  outside the job's range is kept in raw but never written to facts (it would
-  escape the delete scope), and an account that errors mid-fetch contributes no
-  rows at all (its existing facts stay untouched).
+  in one transaction → every sync is idempotent and safe to retry. That
+  transaction holds `pg_advisory_xact_lock(7201, connection_id)`, so syncs of
+  one connection are serialized (an overlapping sync waits, then replaces the
+  first one's rows instead of doubling them; after `lock_timeout` 10 min it
+  fails with a retryable `TransientError`). A row dated outside the job's range
+  is kept in raw but never written to facts (it would escape the delete scope),
+  and an account that errors mid-fetch contributes no rows at all (its existing
+  facts stay untouched). **An account the platform answers with zero rows for a
+  range that already holds facts keeps those facts** (`stats.accounts_empty_kept`)
+  — an empty answer is never allowed to wipe stored data.
 - Dim resolution derives an ad's campaign/ad-set from the entity hierarchy when
   an insight row carries only the ad id. Meta and Google report full ids; TikTok
   and Snapchat report at ad level only, so their facts still get campaign_id and
