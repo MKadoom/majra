@@ -6,11 +6,13 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -155,6 +157,44 @@ class ReconciliationResult(Base):
     stored_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
     status: Mapped[str] = mapped_column(String(20))  # ok | mismatch | error
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class DonationOrder(Base):
+    """A real donation/order from the Jood store, imported from its export.
+
+    This is the ground truth the ad platforms' purchase claims are compared
+    against: each platform reports the donations it *claims* (and several can
+    claim the same one); Jood records each donation once. `platform` is the
+    paid channel the order is attributed to (from an explicit column, the Jood
+    per-platform ad link, or utm_source), or "unattributed". Re-importing the
+    same export updates rows in place (unique per user + order id)."""
+
+    __tablename__ = "donation_orders"
+    __table_args__ = (
+        UniqueConstraint("user_id", "external_id", name="uq_donation_orders_user_ext"),
+        Index("ix_donation_orders_user_date", "user_id", "date"),
+        {"schema": "app"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app.users.id"))
+    source: Mapped[str] = mapped_column(String(30), default="jood")
+    external_id: Mapped[str] = mapped_column(String(120))
+    ordered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    date: Mapped[object] = mapped_column(Date)            # Asia/Riyadh calendar day
+    amount: Mapped[float] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str] = mapped_column(String(10), default="SAR")
+    status: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=True)
+    platform: Mapped[str] = mapped_column(String(30), default="unattributed")
+    utm_source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    utm_medium: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    utm_campaign: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw: Mapped[dict] = mapped_column(JSONB, default=dict)
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class SyncLog(Base):

@@ -34,7 +34,9 @@ SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
 
 # Fixed report shape (positions matter for normalization).
 DIMENSIONS = ["date", "sessionSource", "sessionMedium", "sessionCampaignName"]
-METRICS = ["sessions", "totalUsers", "conversions", "purchaseRevenue"]
+# ecommercePurchases = completed purchases (donations): the neutral, cross-platform
+# reference majra compares each ad platform's claimed purchases against.
+METRICS = ["sessions", "totalUsers", "conversions", "purchaseRevenue", "ecommercePurchases"]
 PAGE_LIMIT = 100_000
 
 
@@ -144,6 +146,7 @@ class GA4Connector(BaseConnector):
             "users": int(float(met(1) or 0)),
             "conversions": float(met(2) or 0),
             "revenue": float(met(3) or 0),
+            "purchases": int(float(met(4) or 0)),
         }
 
     # ------------------------------------------------------------- http

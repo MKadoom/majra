@@ -11,6 +11,9 @@ const V1_READ_PATHS = [
   "/pacing",
   "/anomalies",
   "/reconciliation",
+  "/donations",
+  "/donations/compare",
+  "/donations/orders",
 ];
 
 /** @type {import('next').NextConfig} */

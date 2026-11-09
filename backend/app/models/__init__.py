@@ -4,6 +4,7 @@ from app.models.app_models import (
     Budget,
     CardCharge,
     Connection,
+    DonationOrder,
     FxRate,
     MetricCoverage,
     ReconciliationResult,
@@ -34,7 +35,7 @@ from app.models.norm_models import (
 
 __all__ = [
     "User", "Connection", "Schedule", "SyncJob", "SyncLog", "AccountSyncState",
-    "ApiKey", "SavedReport", "FxRate", "MetricCoverage", "ReconciliationResult", "Budget", "SavedView", "CardCharge",
+    "ApiKey", "DonationOrder", "SavedReport", "FxRate", "MetricCoverage", "ReconciliationResult", "Budget", "SavedView", "CardCharge",
     "Account", "Campaign", "Adset", "Ad",
     "FactAdPerformance", "FactWebPerformance", "FactSocialPerformance",
     "GtmResource",

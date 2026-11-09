@@ -17,7 +17,7 @@ try:  # pragma: no cover
 except ImportError:
     pass
 
-from app.api import auth, data, keys, platform, reports
+from app.api import auth, data, donations, keys, platform, reports
 from app.core.config import settings
 from app.core.db import engine
 from app.core.limiter import limiter
@@ -97,6 +97,7 @@ app.include_router(platform.router)
 app.include_router(data.router)
 app.include_router(keys.router)
 app.include_router(reports.router)
+app.include_router(donations.router)
 
 BUILD.labels(version=VERSION).set(1)
 

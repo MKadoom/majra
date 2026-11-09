@@ -25,6 +25,7 @@ SUMS = {
     "users": func.coalesce(func.sum(W.users), 0),
     "conversions": func.coalesce(func.sum(W.conversions), 0),
     "revenue": func.coalesce(func.sum(W.revenue), 0),
+    "purchases": func.coalesce(func.sum(W.purchases), 0),
 }
 
 SORTABLE = set(GROUPABLE) | set(SUMS)
@@ -87,6 +88,7 @@ def query_web_metrics(
         row["users"] = int(row["users"])
         row["conversions"] = float(row["conversions"])
         row["revenue"] = float(row["revenue"])
+        row["purchases"] = int(row["purchases"])
         data.append(row)
 
     return {"data": data, "page": page, "page_size": page_size, "total": int(total or 0)}
