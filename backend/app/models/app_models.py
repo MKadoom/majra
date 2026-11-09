@@ -138,6 +138,25 @@ class MetricCoverage(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ReconciliationResult(Base):
+    """One daily check (T7): a platform's own account-level total for a day
+    vs. the sum of what majra stored for that account and day."""
+
+    __tablename__ = "reconciliation_results"
+    __table_args__ = {"schema": "app"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("app.connections.id"), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("norm.accounts.id", ondelete="CASCADE"))
+    date: Mapped[object] = mapped_column(Date)
+    metric: Mapped[str] = mapped_column(String(30))
+    platform_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    stored_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    status: Mapped[str] = mapped_column(String(20))  # ok | mismatch | error
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
     __table_args__ = {"schema": "app"}

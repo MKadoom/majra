@@ -264,6 +264,26 @@ own day boundaries — only if HALF_HOUR is refused).
    rates, and ROAS = purchase_value / spend — the review's reference figures
    are 120,313 SAR and 1.42 (to be re-checked against the live API after deploy).
 
+## §5b Reconciliation and contract fixtures (T7)
+- `BaseConnector.fetch_account_totals(tokens, account, date_from, date_to)` —
+  optional; returns the platform's OWN account-level daily `{spend,
+  impressions, purchases}` (Meta `level=account`, Snapchat account stats), or
+  `None` = unsupported (TikTok, Google Ads, GA4, social, WhatsApp today).
+- `app/services/reconciliation.py`, daily beat task (45 min before the
+  digest): for active, non-deleted, allow-listed accounts, compare those totals
+  with stored facts (breakdown `none`, native currency) for the 7 days ending
+  two days ago. Tolerance: spend max(1 unit, 1%), impressions max(10, 1%),
+  purchases max(1, 2%). Every check is stored in `app.reconciliation_results`
+  (migration 0019); mismatches raise one `data.mismatch` alert; platform errors
+  are recorded, not alerted. `GET /reconciliation` (also `/v1`) = latest run;
+  `POST /reconciliation/run` runs it now.
+- Contract fixtures: `backend/tests/fixtures/contracts/<platform>/*.json`
+  (`synthetic-*` from documented shapes, `recorded-*` from
+  `python -m scripts.record_contracts --connection-id N --date YYYY-MM-DD`,
+  read-only, tokens/secrets/names redacted). `tests/test_contracts.py` replays
+  every file through the real connector and asserts the normalized contract
+  and that ad-level rows add up to the account totals.
+
 ## §6 App tables (schema `app`, `app/models/app_models.py`)
     users(id, email UNIQUE, password_hash, created_at)
     connections(id, user_id, platform, name, encrypted_tokens BYTEA, status,

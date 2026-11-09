@@ -59,6 +59,12 @@ celery_app.conf.update(
             "task": "app.workers.tasks.check_tokens_task",
             "schedule": crontab(minute=0, hour=alerts.alert_settings.alert_digest_hour_utc),
         },
+        # Reconcile stored data against each platform's own totals, before the
+        # digest so a mismatch alert lands first.
+        "reconcile": {
+            "task": "app.workers.tasks.reconcile_task",
+            "schedule": crontab(minute=45, hour=(alerts.alert_settings.alert_digest_hour_utc - 1) % 24),
+        },
         "daily-digest": {
             "task": "app.workers.tasks.daily_digest_task",
             "schedule": crontab(minute=5, hour=alerts.alert_settings.alert_digest_hour_utc),
@@ -214,6 +220,19 @@ def check_tokens_task() -> int:
         versions = alerts.api_version_notices()
         _send(alerts.api_version_alert(versions))
         return len(expiring) + len(versions)
+    finally:
+        db.close()
+
+
+@celery_app.task
+def reconcile_task() -> int:
+    from app.services.reconciliation import mismatch_alert, reconcile
+
+    db = SessionLocal()
+    try:
+        summary = reconcile(db)
+        _send(mismatch_alert(summary))
+        return len(summary["mismatches"])
     finally:
         db.close()
 

@@ -874,3 +874,54 @@ def gtm_resources(
             for r in rows
         ],
     }
+
+
+# ------------------------------------------------------------ reconciliation
+@router.get("/reconciliation")
+def reconciliation(
+    user: User = Depends(get_read_principal), db: Session = Depends(get_db)
+):
+    """The latest daily reconciliation (T7) for this user's connections: how
+    many platform-vs-stored checks ran, and every mismatch / error."""
+    from app.models import ReconciliationResult as R
+
+    mine = select(Connection.id).where(Connection.user_id == user.id)
+    last = db.scalar(select(func.max(R.run_at)).where(R.connection_id.in_(mine)))
+    if last is None:
+        return {"run_at": None, "checked": 0, "mismatches": [], "errors": []}
+    # one run's rows share a run_at to the second; take the latest minute
+    rows = db.execute(
+        select(R, Account.name, Account.external_id, Connection.platform)
+        .join(Account, Account.id == R.account_id)
+        .join(Connection, Connection.id == R.connection_id)
+        .where(R.connection_id.in_(mine), R.run_at >= last - timedelta(minutes=5))
+        .order_by(R.date, R.metric)
+    ).all()
+    out = {"run_at": last.isoformat(), "checked": 0, "mismatches": [], "errors": []}
+    for r, name, ext, platform in rows:
+        if r.status == "error":
+            out["errors"].append({"platform": platform, "account": name,
+                                  "account_external_id": ext, "error": r.detail})
+            continue
+        out["checked"] += 1
+        if r.status == "mismatch":
+            out["mismatches"].append({
+                "platform": platform, "account": name, "account_external_id": ext,
+                "date": r.date.isoformat(), "metric": r.metric,
+                "platform_value": float(r.platform_value or 0),
+                "stored_value": float(r.stored_value or 0),
+            })
+    return out
+
+
+@router.post("/reconciliation/run")
+def run_reconciliation(
+    days: int = Query(7, ge=1, le=31),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Run the reconciliation now for this user's connections (read-only against
+    the platforms: one account-level call per account)."""
+    from app.services.reconciliation import reconcile
+
+    return reconcile(db, days=days, user_id=user.id)

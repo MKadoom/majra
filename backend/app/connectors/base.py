@@ -160,6 +160,17 @@ class BaseConnector(ABC):
         breakdown: str,
     ) -> Iterator[dict]: ...
 
+    # ---------------------------------------------------- reconciliation
+    def fetch_account_totals(
+        self, tokens: TokenSet, account_external_id: str, date_from: date, date_to: date
+    ) -> dict[str, dict] | None:
+        """Optional (T7): the platform's OWN account-level daily totals,
+        `{"YYYY-MM-DD": {"spend": float, "impressions": int, "purchases": int}}`,
+        fetched independently of the ad-level rows the sync stores — so the
+        daily reconciliation can catch dropped pages, missing ads or bad
+        normalization. Returning None means "not supported" (skipped)."""
+        return None
+
     # ---------------------------------------------------- normalization
     @abstractmethod
     def normalize_entity(self, raw: dict, level: Level) -> dict: ...
