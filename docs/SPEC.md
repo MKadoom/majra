@@ -279,8 +279,11 @@ adds a `warnings[]` entry: days before and after are not like for like.
 `GET /tracking-changes` lists them; `POST` / `DELETE /tracking-changes` are
 owner-only. 0022 seeds the 2026-11-09 clean-up: Google Ads Purchase deduped by
 transaction ID (GTM v17); Stape Snapchat gateway removed (Jood Snap CAPI is the
-single server sender); Jood "pixel events only for ad-link visits" on for
-Meta, Snapchat and TikTok (≈13:40 Riyadh).
+single server sender; server-side Purchase before it was ≈2×); Jood "pixel
+events only for ad-link visits" on for Meta, Snapchat and TikTok (≈13:40
+Riyadh). It also seeds 2026-11-10 for TikTok and Meta: their ad links were
+tagged at an unrecorded time between 2026-11-09 13:40 and 2026-11-10, so the
+row uses the latest possible day.
 
 **Spend provenance (T6)** — `fact_ad_performance.cost_source`
 (`platform | pricing_analytics | estimate | missing`, migration 0018; pre-T6
