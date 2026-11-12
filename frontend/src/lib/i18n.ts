@@ -374,8 +374,15 @@ const en: Dict = {
 
   // settings
   "set.title": "Settings",
-  "set.subtitle": "Your account, API keys, and currency rates.",
+  "set.subtitle": "Your account, API keys, alerts and currency rates.",
   "set.fxTitle": "Currency rates",
+  "set.alertsTitle": "Alerts",
+  "set.alertsOn": "Alerts go to: {channels}. Sync failures, skipped accounts, expiring tokens and API deadlines, plus a daily digest at 08:00 Riyadh.",
+  "set.alertsOff": "No alert channel is set up, so failures are silent. Set the MAJRA_ALERT_WHATSAPP_* variables on the backend service.",
+  "set.alertsUnknown": "Couldn't read the alert status.",
+  "set.alertsTest": "Send test alert",
+  "set.alertsAccepted": "accepted. Check the phone.",
+  "set.alertsRejected": "rejected",
   "set.fxBlurb": "Set an exchange rate per currency (USD value of one unit) so Explore can blend mixed-currency accounts into one reporting currency. USD is always 1.",
   "set.fxSave": "Save rate",
   "set.fxFetch": "Fetch latest",
@@ -757,8 +764,15 @@ const ar: Dict = {
 
   // settings
   "set.title": "الإعدادات",
-  "set.subtitle": "حسابك ومفاتيح الـAPI وأسعار العملات.",
+  "set.subtitle": "حسابك ومفاتيح الـAPI والتنبيهات وأسعار العملات.",
   "set.fxTitle": "أسعار العملات",
+  "set.alertsTitle": "التنبيهات",
+  "set.alertsOn": "تُرسل التنبيهات إلى: {channels}. فشل المزامنة، والحسابات المتخطاة، والرموز التي تقترب من انتهاء صلاحيتها، ومواعيد إيقاف إصدارات الـAPI، مع ملخص يومي الساعة 08:00 بتوقيت الرياض.",
+  "set.alertsOff": "لم تُضبط أي قناة للتنبيهات، لذا لا يُبلَّغ أحد عند حدوث خطأ. اضبط متغيرات MAJRA_ALERT_WHATSAPP_* في خدمة الـbackend.",
+  "set.alertsUnknown": "تعذّرت قراءة حالة التنبيهات.",
+  "set.alertsTest": "إرسال تنبيه تجريبي",
+  "set.alertsAccepted": "قُبلت الرسالة. تحقّق من الجوال.",
+  "set.alertsRejected": "رُفضت",
   "set.fxBlurb": "حدّد سعر صرف لكل عملة (قيمة الوحدة بالدولار) حتى تتمكن لوحة الاستكشاف من دمج الحسابات متعددة العملات في عملة تقارير واحدة. الدولار دائمًا 1.",
   "set.fxSave": "حفظ السعر",
   "set.fxFetch": "جلب الأحدث",

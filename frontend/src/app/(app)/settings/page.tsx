@@ -177,6 +177,8 @@ export default function SettingsPage() {
         )}
       </Panel>
 
+      <Alerts />
+
       <FxRates rates={rates} onChange={load} />
     </div>
   );
@@ -289,6 +291,81 @@ function FxRates({ rates, onChange }: { rates: FxRate[]; onChange: () => void })
           {busy ? t("common.working") : t("set.fxSave")}
         </button>
       </div>
+    </Panel>
+  );
+}
+
+type Health = { alerts_configured: boolean; alert_channels: string[] };
+type WaResult = {
+  to: string;
+  ok: boolean;
+  status: number | null;
+  error: { code?: number; error_subcode?: number; message?: string } | null;
+};
+type AlertTest = {
+  channels: string[];
+  whatsapp: WaResult[] | null;
+  webhook: { ok: boolean } | null;
+};
+
+function Alerts() {
+  const { t } = useLocale();
+  const [health, setHealth] = useState<Health | null>(null);
+  const [result, setResult] = useState<AlertTest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get<Health>("/health").then(setHealth).catch(() => setHealth(null));
+  }, []);
+
+  async function sendTest() {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      setResult(await api.post<AlertTest>("/alerts/test", {}));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const channels = health?.alert_channels ?? [];
+
+  return (
+    <Panel title={t("set.alertsTitle")}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="text-sm text-muted">
+          {health === null
+            ? t("set.alertsUnknown")
+            : channels.length
+              ? t("set.alertsOn", { channels: channels.join(", ") })
+              : t("set.alertsOff")}
+        </p>
+        <button className="btn-quiet shrink-0" onClick={sendTest} disabled={busy || !channels.length}>
+          {busy ? t("common.working") : t("set.alertsTest")}
+        </button>
+      </div>
+      {error && <ErrorNote message={error} />}
+      {result?.whatsapp && (
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {result.whatsapp.map((r, i) => (
+            <li key={i} className={r.ok ? "text-good" : "text-bad"}>
+              <span className="num" dir="ltr">{r.to}</span>{" "}
+              {r.ok
+                ? t("set.alertsAccepted")
+                : `${t("set.alertsRejected")} (${r.status ?? "—"}${r.error?.code ? ` · ${r.error.code}` : ""})${r.error?.message ? `: ${r.error.message}` : ""}`}
+            </li>
+          ))}
+        </ul>
+      )}
+      {result?.webhook && (
+        <p className={`text-sm ${result.webhook.ok ? "text-good" : "text-bad"}`}>
+          webhook: {result.webhook.ok ? t("set.alertsAccepted") : t("set.alertsRejected")}
+        </p>
+      )}
     </Panel>
   );
 }

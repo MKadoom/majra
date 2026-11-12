@@ -17,6 +17,7 @@ try:  # pragma: no cover
 except ImportError:
     pass
 
+from app.api import alerts as alerts_api
 from app.api import auth, data, donations, keys, platform, reports
 from app.core.config import settings
 from app.core.db import engine
@@ -98,6 +99,7 @@ app.include_router(data.router)
 app.include_router(keys.router)
 app.include_router(reports.router)
 app.include_router(donations.router)
+app.include_router(alerts_api.router)
 
 BUILD.labels(version=VERSION).set(1)
 

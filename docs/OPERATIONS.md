@@ -107,6 +107,20 @@ failed job in **Sync jobs**, and an alert (WhatsApp if the
 14 days ahead, every morning, until they're reconnected. `GET /health` shows
 `alerts_configured` — if it's `false`, nothing is being sent.
 
+**Setting up WhatsApp alerts** (once):
+1. In WhatsApp Manager, copy the sending number's **Phone Number ID** (an ID,
+   not a secret) and create a **Utility** template whose body has exactly one
+   variable `{{1}}` (e.g. `Majra alert: {{1}}`). Wait for it to be approved.
+2. In Business Settings → System users, give a system user the WhatsApp
+   account and generate a token with `whatsapp_business_messaging`.
+3. In Railway, on the **backend, worker and beat** services, set
+   `MAJRA_ALERT_WHATSAPP_TOKEN`, `_PHONE_NUMBER_ID`, `_TO` (recipients,
+   comma-separated, e.g. `9665XXXXXXXX`; not the business number itself) and
+   `_TEMPLATE` (+ `_TEMPLATE_LANG` if not `en`).
+4. **Settings → Alerts → Send test alert** (owner-only, `POST /alerts/test`)
+   shows, per recipient, whether WhatsApp accepted the message and, if not,
+   Meta's error code and message. Accepted means queued; check the phone.
+
 **The fix** is always the same: on the connection's card press **Reconnect**
 and authorize again. The new tokens replace the old ones *on the same
 connection* — its schedule, account selection and history stay. (Don't use

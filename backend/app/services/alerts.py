@@ -134,23 +134,46 @@ def _whatsapp_body(alert: Alert, to: str) -> dict:
     }
 
 
-def _send_whatsapp(alert: Alert) -> bool:
+def _mask(number: str) -> str:
+    return f"+…{number[-3:]}" if len(number) > 3 else "+…"
+
+
+def _meta_error(r: httpx.Response) -> dict | None:
+    """Graph's error code/message (never the request, so never the token)."""
+    try:
+        err = r.json().get("error") or {}
+    except ValueError:
+        return None
+    return {k: err[k] for k in ("code", "error_subcode", "message") if k in err} or None
+
+
+def _whatsapp_results(alert: Alert) -> list[dict]:
+    """One result per recipient: masked number, HTTP status, Meta's error.
+    A 2xx means WhatsApp *accepted* the message, not that it was delivered."""
     url = (
         f"https://graph.facebook.com/{alert_settings.alert_whatsapp_api_version}/"
         f"{alert_settings.alert_whatsapp_phone_number_id}/messages"
     )
     headers = {"Authorization": f"Bearer {alert_settings.alert_whatsapp_token}"}
-    ok = True
+    out = []
     for to in alert_settings.whatsapp_recipients:
+        res: dict = {"to": _mask(to), "ok": False, "status": None, "error": None}
         try:
             r = httpx.post(url, json=_whatsapp_body(alert, to), headers=headers, timeout=10)
-            if r.status_code >= 400:
-                ok = False
+            res["status"] = r.status_code
+            res["ok"] = r.status_code < 400
+            if not res["ok"]:
+                res["error"] = _meta_error(r)
                 log.warning("alert.whatsapp_failed", kind=alert.kind, status=r.status_code)
         except httpx.HTTPError as exc:
-            ok = False
+            res["error"] = {"message": type(exc).__name__}
             log.warning("alert.whatsapp_failed", kind=alert.kind, error=type(exc).__name__)
-    return ok
+        out.append(res)
+    return out
+
+
+def _send_whatsapp(alert: Alert) -> bool:
+    return all(r["ok"] for r in _whatsapp_results(alert))
 
 
 def _send_webhook(alert: Alert) -> bool:
@@ -176,6 +199,23 @@ def send(alert: Alert) -> bool:
     if core_settings.alert_webhook_url:
         sent = _send_webhook(alert) or sent
     return sent
+
+
+def send_test() -> dict:
+    """Send a harmless test alert to every configured channel and report what
+    each one answered (owner-only endpoint; nothing secret in the result)."""
+    alert = Alert(
+        kind="test",
+        title="Majra test alert",
+        lines=["If you can read this, Majra alerts reach this number."],
+    )
+    log.warning("alert", kind=alert.kind, title=alert.title)
+    out: dict = {"channels": configured_channels(), "whatsapp": None, "webhook": None}
+    if alert_settings.whatsapp_configured:
+        out["whatsapp"] = _whatsapp_results(alert)
+    if core_settings.alert_webhook_url:
+        out["webhook"] = {"ok": _send_webhook(alert)}
+    return out
 
 
 # ------------------------------------------------------------- alert builders

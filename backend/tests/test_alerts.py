@@ -396,3 +396,42 @@ def test_beat_schedules_digest_and_token_check():
     sched = tasks.celery_app.conf.beat_schedule
     assert sched["daily-digest"]["task"].endswith("daily_digest_task")
     assert sched["check-tokens"]["task"].endswith("check_tokens_task")
+
+
+# ------------------------------------------------------------ /alerts/test
+@respx.mock
+def test_test_endpoint_reports_each_recipient(auth_client, whatsapp):
+    respx.post(WA_URL).mock(side_effect=[
+        httpx.Response(200, json={"messages": [{"id": "wamid.1"}]}),
+        httpx.Response(400, json={"error": {
+            "code": 131030, "message": "Recipient phone number not in allowed list",
+            "fbtrace_id": "x"}}),
+    ])
+    body = auth_client.post("/alerts/test").json()
+    assert body["channels"] == ["whatsapp"]
+    first, second = body["whatsapp"]
+    assert first == {"to": "+…001", "ok": True, "status": 200, "error": None}
+    assert second["ok"] is False and second["status"] == 400
+    assert second["error"] == {"code": 131030,
+                               "message": "Recipient phone number not in allowed list"}
+    assert "wa-secret-token" not in str(body)
+    assert "966500000002" not in str(body)   # recipients are masked
+
+
+@respx.mock
+def test_test_endpoint_with_nothing_configured(auth_client):
+    body = auth_client.post("/alerts/test").json()
+    assert body == {"channels": [], "whatsapp": None, "webhook": None}
+
+
+def test_test_endpoint_is_owner_only(client, auth_client, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setattr(config.settings, "allow_registration", True)
+    r = client.post("/auth/register", json={"email": "second@majra.dev",
+                                            "password": "s3cret-pass"})
+    other = TestClient(app)
+    other.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
+    assert other.post("/alerts/test").status_code == 403
