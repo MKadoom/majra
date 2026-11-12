@@ -21,6 +21,7 @@ from app.models import (
     Schedule,
     SyncJob,
     SyncLog,
+    TrackingChange,
     User,
 )
 from app.services import exports
@@ -545,6 +546,57 @@ def freshness(
     """Per-connection data freshness: newest synced day, days behind, and whether
     it has gone stale (stopped delivering)."""
     return freshness_report(db, user_id=user.id)
+
+
+# ----------------------------------------------------------- tracking changes
+class TrackingChangeIn(BaseModel):
+    changed_on: date
+    platform: str | None = Field(default=None, max_length=50)  # None = every platform
+    metric: str = Field(default="purchases", max_length=50)
+    note: str = Field(min_length=3, max_length=500)
+
+
+def _tc_out(c: TrackingChange) -> dict:
+    return {"id": c.id, "changed_on": c.changed_on.isoformat(), "platform": c.platform,
+            "metric": c.metric, "note": c.note}
+
+
+@router.get("/tracking-changes")
+def list_tracking_changes(
+    user: User = Depends(get_read_principal), db: Session = Depends(get_db)
+):
+    """Days a metric's meaning changed (SPEC §5a); /metrics warns across them."""
+    q = select(TrackingChange).order_by(TrackingChange.changed_on.desc(),
+                                        TrackingChange.id)
+    return [_tc_out(c) for c in db.scalars(q)]
+
+
+@router.post("/tracking-changes", status_code=201)
+def add_tracking_change(
+    body: TrackingChangeIn,
+    user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Record a tracking change (owner-only: it changes every user's warnings)."""
+    c = TrackingChange(changed_on=body.changed_on, platform=body.platform or None,
+                       metric=body.metric, note=body.note.strip())
+    db.add(c)
+    db.commit()
+    return _tc_out(c)
+
+
+@router.delete("/tracking-changes/{change_id}", status_code=204)
+def delete_tracking_change(
+    change_id: int,
+    user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    c = db.get(TrackingChange, change_id)
+    if c is None:
+        raise HTTPException(404, "tracking change not found")
+    db.delete(c)
+    db.commit()
+    return Response(status_code=204)
 
 
 # ------------------------------------------------------------------- fx rates

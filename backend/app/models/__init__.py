@@ -13,6 +13,7 @@ from app.models.app_models import (
     Schedule,
     SyncJob,
     SyncLog,
+    TrackingChange,
     User,
 )
 from app.models.norm_models import (
@@ -36,6 +37,7 @@ from app.models.norm_models import (
 __all__ = [
     "User", "Connection", "Schedule", "SyncJob", "SyncLog", "AccountSyncState",
     "ApiKey", "DonationOrder", "SavedReport", "FxRate", "MetricCoverage", "ReconciliationResult", "Budget", "SavedView", "CardCharge",
+    "TrackingChange",
     "Account", "Campaign", "Adset", "Ad",
     "FactAdPerformance", "FactWebPerformance", "FactSocialPerformance",
     "GtmResource",
